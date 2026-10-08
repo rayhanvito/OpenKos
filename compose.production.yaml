@@ -2,6 +2,10 @@ volumes:
     uploads:
         name: '${OPENKOS_UPLOAD_VOLUME:-openkos_uploads}'
 
+x-openkos-build: &openkos-build
+    context: .
+    dockerfile: .docker/php/Dockerfile.prod
+
 x-openkos-environment: &openkos-environment
     APP_NAME: '${APP_NAME:-OpenKOS}'
     APP_ENV: '${APP_ENV:-production}'
@@ -63,7 +67,8 @@ x-openkos-environment: &openkos-environment
 
 services:
     web:
-        image: '${OPENKOS_IMAGE:-ghcr.io/rayhanvito/openkos:latest}'
+        build: *openkos-build
+        image: '${OPENKOS_IMAGE:-openkos:coolify}'
         environment:
             <<: *openkos-environment
             LARAVEL_OPTIMIZE: '${LARAVEL_OPTIMIZE:-true}'
@@ -94,7 +99,8 @@ services:
         mem_limit: '${OPENKOS_WEB_MEMORY:-512m}'
 
     queue:
-        image: '${OPENKOS_IMAGE:-ghcr.io/rayhanvito/openkos:latest}'
+        build: *openkos-build
+        image: '${OPENKOS_IMAGE:-openkos:coolify}'
         environment:
             <<: *openkos-environment
             LARAVEL_OPTIMIZE: '${LARAVEL_OPTIMIZE:-true}'
@@ -131,7 +137,8 @@ services:
         mem_limit: '${OPENKOS_QUEUE_MEMORY:-512m}'
 
     scheduler:
-        image: '${OPENKOS_IMAGE:-ghcr.io/rayhanvito/openkos:latest}'
+        build: *openkos-build
+        image: '${OPENKOS_IMAGE:-openkos:coolify}'
         environment:
             <<: *openkos-environment
             LARAVEL_OPTIMIZE: '${LARAVEL_OPTIMIZE:-true}'

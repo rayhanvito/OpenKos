@@ -1,7 +1,9 @@
 # Production Deployment
 
-OpenKOS production uses the immutable FrankenPHP image published at
-`ghcr.io/rayhanvito/openkos`.
+OpenKOS production builds the multi-stage FrankenPHP image directly on the
+Coolify server from `.docker/php/Dockerfile.prod`. GHCR publishing remains an
+optional release path; a registry credential is not required for the default
+Coolify deployment.
 
 The production Compose reference contains only the application roles:
 
@@ -27,8 +29,10 @@ Set the HTTPS domain on the `web` service and route it to internal port `8080`.
 Do not publish or attach domains to `queue` or `scheduler`. Coolify's proxy
 terminates TLS; the containers remain HTTP-only inside the Compose network.
 
-Set `OPENKOS_IMAGE` to a version tag or digest, never `latest` for a stable
-release. For example:
+The Compose file builds all three services from the same Dockerfile and tags the
+local image as `openkos:coolify` by default. Keep `OPENKOS_IMAGE` unset for this
+mode. If you later switch to a published registry image, set it to a version
+tag or digest, never `latest` for a stable release. For example:
 
 ```text
 OPENKOS_IMAGE=ghcr.io/rayhanvito/openkos:1.0.0
@@ -154,9 +158,13 @@ Keep the previous image tag or digest in the release notes. To roll back, set
 `OPENKOS_IMAGE` back to that value and redeploy. Restore PostgreSQL only when an
 incompatible migration requires it; never use `migrate:fresh` for rollback.
 
-## Image tags
+## Optional GHCR image publishing
 
-Stable version tags publish `1.2.3`, `1.2`, `1`, and `latest`.
+The stable workflow publishes version tags `1.2.3`, `1.2`, `1`, and `latest`
+when GitHub Actions is available. Nightly builds publish `nightly` and an
+immutable tag containing the UTC build date and commit SHA. Nightly builds never
+move `latest`.
 
-Nightly builds publish `nightly` and an immutable tag containing the UTC build
-date and commit SHA. Nightly builds never move `latest`.
+Coolify does not need these registry images in the default configuration because
+`compose.production.yaml` builds the image locally. Use a version tag or digest
+only when intentionally switching to registry-based deployments.

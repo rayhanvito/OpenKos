@@ -1,0 +1,19 @@
+<?php
+
+return [
+    'rent' => [
+        'upcoming' => "Halo :name,\n\nSewa kamar :unit akan jatuh tempo dalam :days hari.\n\nJumlah: :amount\nTanggal jatuh tempo: :date\n\n:invoice_context\n\n:invoice_link",
+        'due_today' => "Halo :name,\n\nSewa kamar :unit jatuh tempo hari ini.\n\nJumlah: :amount\n\n:invoice_context\n\n:invoice_link",
+        'overdue' => "Halo :name,\n\nPembayaran sewa kamar :unit terlambat :days hari.\n\nJumlah: :amount\n\n:invoice_context\n\n:invoice_link",
+        'invoice_context' => "Invoice: :reference\nPeriode: :period\nTanggal jatuh tempo: :date\nSisa tagihan: :amount",
+        'view_invoice' => 'Lihat invoice',
+    ],
+    'tenant_invitation' => [
+        'subject' => 'Anda diundang ke OpenKos',
+        'greeting' => 'Selamat datang di OpenKos',
+        'intro' => 'Anda telah diberikan akses ke portal penyewa Anda.',
+        'instruction' => 'Atur kata sandi Anda untuk mengaktifkan akun dan mengakses pembayaran, tagihan, dan detail sewa.',
+        'action' => 'Terima Undangan',
+        'outro' => 'Jika Anda tidak mengharapkan undangan ini, Anda dapat mengabaikan email ini.',
+    ],
+];

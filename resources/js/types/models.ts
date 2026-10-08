@@ -1,0 +1,814 @@
+export type Tenant = {
+    id: number;
+    user_id: number | null;
+    name: string;
+    phone: string | null;
+    id_card_number: string | null;
+    emergency_contact_name: string | null;
+    emergency_contact_phone: string | null;
+    notes: string | null;
+    is_active: boolean;
+    updated_at?: string | null;
+    deleted_at?: string | null;
+    active_leases_count?: number;
+    documents?: TenantDocument[];
+    user?: {
+        id: number;
+        email: string;
+        email_verified_at: string | null;
+        last_login_at: string | null;
+        is_active: boolean;
+        invited_at: string | null;
+    } | null;
+};
+
+export type TenantInfo = {
+    id: number;
+    name: string;
+    phone: string | null;
+    pivot?: { is_primary: boolean };
+};
+
+export type TenantDocument = {
+    id: number;
+    type: string;
+    original_name: string;
+    size: number;
+    mime_type: string;
+    created_at: string;
+    download_url: string;
+};
+
+export type Region = {
+    id: number;
+    name: string;
+    cities: { id: number; name: string }[];
+};
+
+export type PropertyRentalMode = 'unit' | 'whole_property' | 'hybrid';
+
+// A user-managed property classification (App\Models\PropertyType). The slug
+// is stored on properties.type; the label is the editable display name.
+export type PropertyTypeOption = {
+    id?: number;
+    slug: string;
+    label: string;
+    default_rental_mode?: PropertyRentalMode;
+    is_active?: boolean;
+    sort_order?: number;
+    properties_count?: number;
+};
+
+export type ExpenseCategory = {
+    id: number;
+    slug: string;
+    label: string;
+    is_active: boolean;
+    sort_order?: number;
+    expenses_count?: number;
+    recurring_expenses_count?: number;
+};
+
+export type ExpenseReceipt = {
+    id: number;
+    original_name: string;
+    mime_type: string;
+    size: number;
+    download_url: string;
+};
+
+export type Expense = {
+    id: number;
+    property_id: number;
+    expense_category_id: number;
+    recurring_expense_id: number | null;
+    amount: string;
+    currency: string;
+    expense_date: string;
+    vendor: string | null;
+    description: string | null;
+    notes: string | null;
+    reference: string | null;
+    status: 'active' | 'voided' | string;
+    voided_at: string | null;
+    voided_by: number | null;
+    void_reason: string | null;
+    created_at: string;
+    updated_at: string;
+    property?: { id: number; name: string } | null;
+    category?: ExpenseCategory | null;
+    recurring_expense?: {
+        id: number;
+        vendor: string | null;
+        description: string | null;
+        billing_interval: number;
+        billing_unit: 'day' | 'week' | 'month' | 'year';
+    } | null;
+    voided_by_user?: { id: number; name: string } | null;
+    receipt?: ExpenseReceipt | null;
+};
+
+export type RecurringExpense = {
+    id: number;
+    property_id: number;
+    expense_category_id: number;
+    amount: string;
+    currency: string;
+    vendor: string | null;
+    description: string | null;
+    billing_interval: number;
+    billing_unit: 'day' | 'week' | 'month' | 'year';
+    start_date: string;
+    end_date: string | null;
+    is_active: boolean;
+    next_due_on: string | null;
+    paused_at: string | null;
+    status: 'active' | 'paused' | 'ended' | string;
+    created_at: string;
+    updated_at: string;
+    property?: { id: number; name: string } | null;
+    category?: ExpenseCategory | null;
+};
+
+export type Property = {
+    id: number;
+    name: string;
+    type?: string; // property_types.slug
+    type_label?: string; // resolved label (appended by the model)
+    rental_mode?: PropertyRentalMode;
+    slug: string; // route key
+    address?: string | null;
+    region_id?: number | null;
+    city_id?: number | null;
+    postal_code?: string | null;
+    phone?: string | null;
+    description?: string | null;
+    is_active?: boolean;
+    is_published?: boolean;
+    public_slug?: string | null;
+    updated_at?: string | null;
+    city?: string | { id: number; name: string } | null;
+    region?: { id: number; name: string } | null;
+    units_count?: number;
+    occupied_units_count?: number;
+    tenants_count?: number;
+    active_property_rates?: PropertyRate[];
+    facilities?: Amenity[];
+    gallery?: GalleryItem[];
+};
+
+export type Amenity = {
+    id: number;
+    name: string;
+    slug: string;
+    icon: string | null;
+    scope: 'property' | 'unit_type' | 'both';
+    is_active: boolean;
+    properties_count?: number;
+    unit_types_count?: number;
+};
+
+export type GalleryItem = {
+    id: number;
+    url: string;
+    position: number;
+    alt: string | null;
+    caption: string | null;
+    original_name: string;
+    mime_type: string;
+};
+
+export type InspectionType = 'move_in' | 'move_out' | 'periodic';
+
+export type InspectionStatus = 'draft' | 'completed';
+
+export type InspectionItemCondition =
+    | 'good'
+    | 'fair'
+    | 'damaged'
+    | 'not_applicable';
+
+export type InspectionTemplateItem = {
+    id: number;
+    label: string;
+    description: string | null;
+    position: number;
+};
+
+export type InspectionTemplate = {
+    id: number;
+    name: string;
+    inspection_type: InspectionType;
+    is_active: boolean;
+    items: InspectionTemplateItem[];
+};
+
+export type InspectionTemplateOption = Pick<
+    InspectionTemplate,
+    'id' | 'name' | 'inspection_type'
+>;
+
+export type InspectionPhoto = {
+    id: number;
+    url: string;
+    original_name: string;
+    mime_type: string;
+    size: number;
+};
+
+export type InspectionItem = {
+    id: number;
+    label: string;
+    description: string | null;
+    position: number;
+    condition: InspectionItemCondition | null;
+    notes: string | null;
+    photos?: InspectionPhoto[];
+};
+
+export type Inspection = {
+    id: number;
+    template_name: string;
+    inspection_type: InspectionType;
+    inspection_date: string;
+    status: InspectionStatus;
+    notes: string | null;
+    damage_observations: string | null;
+    completed_at: string | null;
+    property?: {
+        id: number;
+        name: string;
+        slug: string;
+        deleted_at?: string | null;
+    } | null;
+    unit?: {
+        id: number;
+        name: string;
+        slug: string;
+        property_id: number;
+        deleted_at?: string | null;
+    } | null;
+    lease?: {
+        id: number;
+        reference: string | null;
+        unit_id: number;
+        deleted_at?: string | null;
+        primary_tenant?: { id: number; name: string } | null;
+    } | null;
+    inspector?: { id: number; name: string } | null;
+    completed_by?: { id: number; name: string } | null;
+    items?: InspectionItem[];
+};
+
+export type UnitType = {
+    id: number;
+    property_id: number;
+    name: string;
+    description: string | null;
+    bedrooms: number | null;
+    bathrooms: string | null;
+    size_sqm: string | null;
+    furnishing: string | null;
+    is_active: boolean;
+    is_published: boolean;
+    public_slug: string | null;
+    updated_at?: string | null;
+    deleted_at?: string | null;
+    amenities?: Amenity[];
+    gallery?: GalleryItem[];
+    units_count?: number;
+    available_units_count?: number;
+    rates?: UnitTypeRate[];
+    active_rates?: UnitTypeRate[];
+};
+
+export type UnitRate = {
+    id?: number;
+    billing_interval: number;
+    billing_unit: 'day' | 'week' | 'month' | 'year';
+    amount: string;
+    currency?: string;
+    is_active?: boolean;
+};
+
+export type EffectiveUnitRate = UnitRate & {
+    source: 'unit' | 'unit_type';
+};
+
+export type ListingAction = {
+    label: string;
+    url: string;
+};
+
+export type ListingIssue = {
+    key: string;
+    message: string;
+    action: ListingAction | null;
+};
+
+export type ListingStartingPrice = {
+    amount: string;
+    currency: string;
+    billing_interval: number;
+    billing_unit: 'day' | 'week' | 'month' | 'year';
+    billing_label: string;
+};
+
+export type ListingUnitType = {
+    id: number;
+    name: string;
+    is_active: boolean;
+    is_included: boolean;
+    is_viable_if_included: boolean;
+    physical_units: number;
+    available_units: number;
+    has_active_pricing: boolean;
+    starting_price: ListingStartingPrice | null;
+    status: 'ready' | 'excluded' | 'blocked' | 'inactive';
+    reason: string | null;
+    reason_label: string | null;
+    action: ListingAction | null;
+};
+
+export type ListingWholeProperty = {
+    is_listed: boolean;
+    has_active_pricing: boolean;
+    starting_price: ListingStartingPrice | null;
+    reason: string | null;
+    action: ListingAction | null;
+};
+
+export type ListingReadiness = {
+    can_publish: boolean;
+    is_published: boolean;
+    is_publicly_visible: boolean;
+    public_url: string | null;
+    whole_property: ListingWholeProperty | null;
+    unassigned_units_count: number;
+    blockers: ListingIssue[];
+    recommendations: ListingIssue[];
+    unit_types: ListingUnitType[];
+};
+
+export type PropertyRate = {
+    id?: number;
+    property_id?: number;
+    billing_interval: number;
+    billing_unit: 'day' | 'week' | 'month' | 'year';
+    amount: string;
+    currency: string;
+    is_active?: boolean;
+    effective_from?: string | null;
+    effective_until?: string | null;
+};
+
+export type UnitTypeRate = PropertyRate;
+
+export type UtilityReading = {
+    id: number;
+    reading_kind: 'reading' | 'correction';
+    reading_date: string;
+    period_start: string;
+    period_end: string;
+    previous_reading: string;
+    current_reading: string;
+    consumption: string;
+    adjustment_consumption: string | null;
+    rate: string;
+    currency: string;
+    reference: string | null;
+    corrects_reading_id: number | null;
+    charge_preview: string;
+    billed: boolean;
+    invoice_reference: string | null;
+    can_edit: boolean;
+    can_delete: boolean;
+    correction_exists: boolean;
+};
+
+export type UtilityMeter = {
+    id: number;
+    utility_type: 'electricity' | 'water' | 'custom';
+    utility_name: string | null;
+    identifier: string;
+    measurement_unit: string;
+    rate: string;
+    currency: string;
+    is_active: boolean;
+    readings: UtilityReading[];
+};
+
+export type Unit = {
+    id: number;
+    name: string;
+    slug: string; // route key (unique per property)
+    floor: string | null;
+    description: string | null;
+    size_sqm: string | null;
+    capacity: number;
+    occupied_count?: number;
+    property_id?: number;
+    unit_type_id?: number | null;
+    property?: Property | null;
+    unit_type?: UnitType | null;
+    status: string;
+    notes: string | null;
+    active_leases?: number;
+    updated_at?: string | null;
+    leases?: LeaseInfo[];
+    rates?: UnitRate[];
+    active_rates?: UnitRate[];
+    effective_rates?: EffectiveUnitRate[];
+    tenants?: TenantInfo[];
+    deleted_at?: string | null;
+};
+
+export type UnitWithProperty = Unit & {
+    property_id: number;
+    property: Property | null;
+};
+
+export type AvailableUnit = {
+    id: number;
+    name: string;
+    property_id: number;
+    capacity: number;
+    occupied_count: number;
+    active_rates?: UnitRate[];
+    effective_rates?: EffectiveUnitRate[];
+    leases?: LeaseInfo[];
+    property: {
+        id: number;
+        name: string;
+        city: { name: string } | null;
+    } | null;
+};
+
+export type TenantLease = {
+    id: number;
+    reference: string | null;
+    start_date: string;
+    end_date: string | null;
+    rent_amount: string | null;
+    currency: string;
+    unit: Unit | null;
+    tenants: TenantInfo[];
+    primary_tenant: TenantInfo | null;
+};
+
+export type DepositDeduction = {
+    id: number;
+    amount: string;
+    reason: string;
+    description: string | null;
+};
+
+export type DepositSettlement = {
+    id: number;
+    original_amount: string;
+    currency: string;
+    status: 'draft' | 'settled' | string;
+    settlement_date: string;
+    refund_amount: string;
+    deductions_total: string;
+    refund_reference: string | null;
+    notes: string | null;
+    deductions: DepositDeduction[];
+};
+
+export type LeaseInfo = {
+    id: number;
+    reference: string | null;
+    start_date: string;
+    end_date: string | null;
+    rent_amount: string | null;
+    currency: string;
+    target_type?: 'unit' | 'whole_property';
+    unit_rate_id?: number | null;
+    billing_interval: number;
+    billing_unit: string;
+    billing_strategy?: string;
+    monthly_equivalent: string;
+    billing_label: string;
+    deposit_amount: string;
+    deposit_paid_at: string | null;
+    deposit_refund_amount: string | null;
+    deposit_refunded_at: string | null;
+    deposit_settlement?: DepositSettlement | null;
+    rent_due_day: number;
+    status: string;
+    notes: string | null;
+    tenants: TenantInfo[];
+    primary_tenant: TenantInfo | null;
+    payments?: Payment[];
+};
+
+export type Lease = {
+    id: number;
+    reference: string | null;
+    payment_status?: string | null;
+    pending_payment_review_count?: number;
+    start_date: string;
+    end_date: string | null;
+    rent_amount: string | null;
+    currency: string;
+    target_type: 'unit' | 'whole_property';
+    billing_interval: number;
+    billing_unit: string;
+    billing_strategy?: string;
+    monthly_equivalent: string;
+    billing_label: string;
+    deposit_amount: string;
+    deposit_paid_at: string | null;
+    deposit_refund_amount: string | null;
+    deposit_refunded_at: string | null;
+    deposit_settlement?: DepositSettlement | null;
+    rent_due_day: number;
+    status: string;
+    termination_date: string | null;
+    termination_reason: string | null;
+    notes: string | null;
+    tenants: TenantInfo[];
+    primary_tenant: TenantInfo | null;
+    property?: {
+        id: number;
+        name: string;
+        slug: string;
+        rental_mode?: PropertyRentalMode;
+        city?: string | { id: number; name: string } | null;
+    } | null;
+    unit: UnitWithProperty | null;
+    payments?: Payment[];
+    unit_histories?: {
+        id: number;
+        from_unit: { id: number; name: string } | null;
+        to_unit: { id: number; name: string } | null;
+        transferred_by: {
+            id: number;
+            name: string;
+            roles?: { name: string; label?: string }[];
+        } | null;
+        reason: string | null;
+        notes: string | null;
+        effective_date: string;
+    }[];
+};
+
+export type TenantLeaseContextLease = {
+    id: number;
+    start_date: string;
+    end_date: string | null;
+    status: string;
+    target_type: 'unit' | 'whole_property';
+    unit_name: string | null;
+    property_name: string | null;
+};
+
+export type TenantLeaseContext = {
+    selected: TenantLeaseContextLease | null;
+    leases: TenantLeaseContextLease[];
+};
+
+export type LeaseData = {
+    id: number;
+    currency: string;
+    target_type?: 'unit' | 'whole_property';
+    property?: { id: number; name: string } | null;
+    deposit_amount: string;
+    tenants: TenantInfo[];
+    primary_tenant: TenantInfo | null;
+    unit: { id: number; name: string } | null;
+};
+
+export type PaymentProof = {
+    id: number;
+    payment_id: number;
+    original_name: string;
+    mime_type: string;
+    created_at: string;
+};
+
+export type InvoiceLineItem = {
+    id: number;
+    invoice_id: number;
+    type: string;
+    description: string;
+    amount: string;
+};
+
+export type PaymentAllocation = {
+    id: number;
+    payment_id: number;
+    invoice_id: number;
+    amount: string;
+};
+
+export type GatewayPaymentAttempt = {
+    id: number;
+    invoice_id: number;
+    gateway?: string;
+    reference?: string;
+    provider_reference?: string | null;
+    amount: string;
+    currency: string;
+    status: 'pending' | 'settled' | 'failed' | 'expired' | 'canceled';
+    expires_at: string | null;
+    resumable: boolean;
+    checkout_instructions: {
+        url: string | null;
+        entries: Array<{
+            key: string;
+            value: string;
+            label: string | null;
+        }>;
+    } | null;
+    initiated_at: string;
+    created_at?: string;
+    updated_at?: string;
+    failure_code?: string | null;
+    failure_message?: string | null;
+    recheckable?: boolean;
+};
+
+export type Invoice = {
+    id: number;
+    lease_id: number;
+    reference: string | null;
+    period_start: string;
+    period_end: string;
+    due_date: string;
+    status: string;
+    display_status?: string;
+    total: string;
+    amount_paid: string;
+    currency: string;
+    outstanding?: string;
+    payable_amount?: string;
+    line_items?: InvoiceLineItem[];
+    payments?: Payment[];
+    allocations?: PaymentAllocation[];
+};
+
+export type Payment = {
+    id: number;
+    invoice_id: number;
+    invoice?: Pick<
+        Invoice,
+        'id' | 'reference' | 'period_start' | 'period_end' | 'status'
+    > | null;
+    amount: string;
+    currency: string;
+    payment_date: string;
+    payment_method: string;
+    reference: string | null;
+    notes: string | null;
+    status: string;
+    confirmed_by: number | null;
+    confirmed_by_user?: { id: number; name: string } | null;
+    recorded_by: number | null;
+    recorded_by_user?: { id: number; name: string } | null;
+    verified_by: number | null;
+    verified_by_user?: { id: number; name: string } | null;
+    verified_at: string | null;
+    proofs: PaymentProof[];
+};
+
+export type RentScheduleEntry = {
+    id: number;
+    period_start: string;
+    period_end: string;
+    due_date: string;
+    amount: string;
+    currency: string;
+    amount_paid: string;
+    outstanding: string;
+    status: 'paid' | 'partial' | 'overdue' | 'due' | 'upcoming' | 'cancelled';
+};
+
+export type MaintenanceTicket = {
+    id: number;
+    reference: string | null;
+    property_id: number;
+    unit_id: number | null;
+    location: string | null;
+    title: string;
+    description: string | null;
+    status: string;
+    priority: string;
+    assigned_to: number | null;
+    created_by: number | null;
+    cost: string | null;
+    resolved_at: string | null;
+    resolution_notes: string | null;
+    created_at: string;
+    updated_at: string;
+    property?: { id: number; name: string } | null;
+    unit?: { id: number; name: string } | null;
+    assignee?: {
+        id: number;
+        name: string;
+        roles?: { name: string; label?: string }[];
+    } | null;
+    creator?: {
+        id: number;
+        name: string;
+        roles?: { name: string; label?: string }[];
+    } | null;
+    maintenance_transfer_to?: string | null;
+};
+
+export type ProofRow = {
+    id: number;
+    payment_id: number;
+    original_name: string;
+    mime_type: string;
+    created_at: string;
+    payment: {
+        id: number;
+        invoice_id: number;
+        amount: string;
+        status: string;
+        invoice: { id: number; period_start: string } | null;
+    } | null;
+};
+
+export type WorkspaceLease = {
+    id: number;
+    reference: string | null;
+    start_date: string;
+    end_date: string | null;
+    rent_amount: string | null;
+    billing_strategy?: string;
+    status: string;
+};
+
+export type WorkspaceTenant = Omit<Tenant, 'documents'> & {
+    active_leases_count?: number;
+};
+
+export type WorkspaceUser = {
+    id: number;
+    name: string;
+    email: string;
+    roles: { name: string; label: string }[];
+    role: string | null;
+    properties: { id: number; name: string }[];
+    is_active: boolean;
+    status: 'active' | 'invited' | 'disabled';
+    invited_at: string | null;
+    email_verified_at: string | null;
+    last_login_at: string | null;
+};
+
+export type ManagedProperty = {
+    id: number;
+    name: string;
+    slug: string;
+    type: string;
+    type_label?: string;
+    rental_mode: PropertyRentalMode;
+    address: string | null;
+    region_id: number | null;
+    city_id: number | null;
+    postal_code: string | null;
+    phone: string | null;
+    is_active: boolean;
+    is_published: boolean;
+    public_slug: string | null;
+    units_count: number;
+    occupied_units_count: number;
+    tenants_count: number;
+    city?: { id: number; name: string } | null;
+};
+
+export type WorkspaceProperty = { id: number; slug: string; name: string };
+
+export type WorkspaceUnit = {
+    id: number;
+    name: string;
+    slug: string;
+    floor: string | null;
+    status?: string;
+    capacity?: number;
+    occupied_count?: number;
+};
+
+export type PropertyRef = { id: number; name: string };
+
+export type RoleOption = { value: string; label: string };
+
+export type MaintenanceProperty = {
+    id: number;
+    name: string;
+};
+
+export type MaintenanceUnit = {
+    id: number;
+    slug: string;
+    name: string;
+    property_id: number;
+    status: string;
+    active_lease_count: number;
+    has_maintenance_transfer?: number;
+    leases?: { tenants: { id: number; name: string }[] }[];
+};

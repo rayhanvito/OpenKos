@@ -1,0 +1,357 @@
+import { t } from '@/lib/i18n';
+
+let displayTimezone = 'UTC';
+let displayCurrency: string | null = null;
+let displayLocale = 'en-US';
+let currencyScales: Record<string, number> = {};
+
+export function setDisplayTimezone(timezone: string | null | undefined): void {
+    displayTimezone = timezone || 'UTC';
+}
+
+export function setDisplayCurrency(currency: string | null | undefined): void {
+    displayCurrency = currency?.trim().toUpperCase() || null;
+}
+
+export function setDisplayLocale(locale: string | null | undefined): void {
+    displayLocale = locale || 'en-US';
+}
+
+export function setCurrencyScales(
+    scales: Record<string, number> | null | undefined,
+): void {
+    currencyScales = Object.fromEntries(
+        Object.entries(scales || {}).map(([currency, scale]) => [
+            currency.toUpperCase(),
+            scale,
+        ]),
+    );
+}
+
+function scaleForCurrency(currency: string): number {
+    const scale = currencyScales[currency.toUpperCase()];
+
+    if (scale === undefined) {
+        throw new Error('Unsupported currency: ' + currency);
+    }
+
+    return scale;
+}
+
+function dateTimeFormatter(
+    locale: string,
+    options: Intl.DateTimeFormatOptions,
+    timeZone = displayTimezone,
+): Intl.DateTimeFormat {
+    try {
+        return new Intl.DateTimeFormat(locale, { ...options, timeZone });
+    } catch {
+        return new Intl.DateTimeFormat(locale, { ...options, timeZone: 'UTC' });
+    }
+}
+
+function isDateOnly(value: string): boolean {
+    return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+export function todayISO(): string {
+    const parts = dateTimeFormatter('en-CA', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    })
+        .formatToParts(new Date())
+        .reduce<Record<string, string>>((result, part) => {
+            result[part.type] = part.value;
+
+            return result;
+        }, {});
+
+    return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+export function formatDate(dateStr: string | null): string {
+    if (!dateStr) {
+        return '—';
+    }
+
+    return dateTimeFormatter(
+        displayLocale,
+        {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+        },
+        isDateOnly(dateStr) ? 'UTC' : displayTimezone,
+    ).format(new Date(dateStr));
+}
+
+export function formatDateTime(
+    dateStr: string | null,
+    locale?: string,
+): string {
+    if (!dateStr) {
+        return '—';
+    }
+
+    return dateTimeFormatter(locale ?? displayLocale, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    }).format(new Date(dateStr));
+}
+
+export function formatPrice(
+    amount: string | number | null,
+    currency?: string,
+): string {
+    if (amount === null || amount === '') {
+        return '—';
+    }
+
+    const resolvedCurrency = currency?.trim().toUpperCase() || displayCurrency;
+
+    if (!resolvedCurrency) {
+        return '';
+    }
+
+    const scale = scaleForCurrency(resolvedCurrency);
+    const minor = decimalToMinorRounded(String(amount), scale);
+
+    if (minor === null) {
+        return '—';
+    }
+
+    const formatter = new Intl.NumberFormat(displayLocale, {
+        style: 'currency',
+        currency: resolvedCurrency,
+        minimumFractionDigits: scale,
+        maximumFractionDigits: scale,
+    });
+    const absoluteMinor = minor < 0n ? -minor : minor;
+    const factor = 10n ** BigInt(scale);
+    const whole = absoluteMinor / factor;
+    const fraction =
+        scale > 0
+            ? (absoluteMinor % factor).toString().padStart(scale, '0')
+            : '';
+    const groupedWhole = new Intl.NumberFormat(displayLocale, {
+        useGrouping: true,
+        maximumFractionDigits: 0,
+    }).format(whole);
+    const localizedFraction =
+        scale > 0
+            ? new Intl.NumberFormat(displayLocale, {
+                  useGrouping: false,
+                  minimumIntegerDigits: scale,
+                  maximumFractionDigits: 0,
+              }).format(Number(fraction))
+            : '';
+    let integerPartReplaced = false;
+
+    return formatter
+        .formatToParts(minor < 0n ? -1 : 1)
+        .map((part) => {
+            if (part.type === 'integer' && !integerPartReplaced) {
+                integerPartReplaced = true;
+
+                return groupedWhole;
+            }
+
+            return part.type === 'fraction' ? localizedFraction : part.value;
+        })
+        .join('');
+}
+
+export function formatBillingPeriod(interval: number, unit: string): string {
+    const normalizedUnit = unit.toLowerCase();
+
+    return interval === 1
+        ? t(`/${normalizedUnit}`)
+        : t('Every :count :unit', {
+              count: interval,
+              unit: t(`${normalizedUnit}s`),
+          });
+}
+
+export function formatBillingOptionLabel(interval: number, unit: string): string {
+    const labels: Record<string, string> = {
+        day: 'Daily',
+        week: 'Weekly',
+        month: 'Monthly',
+        year: 'Yearly',
+    };
+    const normalizedUnit = unit.toLowerCase();
+
+    return interval === 1
+        ? t(labels[normalizedUnit] ?? normalizedUnit)
+        : t('Every :count :unit', {
+              count: interval,
+              unit: t(`${normalizedUnit}s`),
+          });
+}
+
+export function formatSize(bytes: number): string {
+    if (bytes < 1024) {
+        return bytes + ' B';
+    }
+
+    if (bytes < 1024 * 1024) {
+        return (bytes / 1024).toFixed(0) + ' KB';
+    }
+
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function decimalToMinor(amount: string, scale: number): bigint | null {
+    if (!/^\d+(?:\.\d+)?$/.test(amount)) {
+        return null;
+    }
+
+    const [whole, fraction = ''] = amount.split('.');
+
+    if (fraction.length > scale && /[1-9]/.test(fraction.slice(scale))) {
+        return null;
+    }
+
+    const padded = fraction.slice(0, scale).padEnd(scale, '0');
+
+    return BigInt(`${whole}${padded}` || '0');
+}
+
+function decimalToMinorRounded(amount: string, scale: number): bigint | null {
+    if (!/^-?\d+(?:\.\d+)?$/.test(amount)) {
+        return null;
+    }
+
+    const negative = amount.startsWith('-');
+    const unsigned = negative ? amount.slice(1) : amount;
+    const [whole, fraction = ''] = unsigned.split('.');
+    const retained = fraction.slice(0, scale).padEnd(scale, '0');
+    let minor = BigInt(`${whole}${retained}` || '0');
+
+    if (fraction.length > scale && Number(fraction[scale]) >= 5) {
+        minor += 1n;
+    }
+
+    return negative ? -minor : minor;
+}
+
+function divideRounded(numerator: bigint, denominator: bigint): bigint {
+    const quotient = numerator / denominator;
+    const remainder = numerator % denominator;
+
+    return remainder * 2n >= denominator ? quotient + 1n : quotient;
+}
+
+function minorToMajor(minor: bigint, scale: number): string {
+    if (scale === 0) {
+        return minor.toString();
+    }
+
+    const value = minor.toString().padStart(scale + 1, '0');
+
+    return `${value.slice(0, -scale)}.${value.slice(-scale)}`;
+}
+
+export function formatPeriod(periodStart: string, locale?: string): string {
+    const [y, m] = periodStart.split('-');
+    const date = new Date(Date.UTC(Number(y), Number(m) - 1, 1));
+
+    return date.toLocaleDateString(locale ?? displayLocale, {
+        year: 'numeric',
+        month: 'long',
+        timeZone: 'UTC',
+    });
+}
+
+export function computeMonthlyEquivalent(
+    amount: string | null,
+    interval: number | null,
+    unit: string | null,
+    currency?: string,
+): string {
+    if (!amount || !interval || !unit) {
+        return '';
+    }
+
+    const resolvedCurrency = currency?.trim().toUpperCase() || displayCurrency;
+
+    if (!resolvedCurrency) {
+        return '';
+    }
+
+    const scale = scaleForCurrency(resolvedCurrency);
+    const minor = decimalToMinor(amount, scale);
+
+    if (minor === null) {
+        return '';
+    }
+
+    const int = interval;
+    let numerator: bigint;
+    let denominator: bigint;
+
+    switch (unit) {
+        case 'day':
+            numerator = 365n;
+            denominator = BigInt(12 * int);
+            break;
+        case 'week':
+            numerator = 52n;
+            denominator = BigInt(12 * int);
+            break;
+        case 'month':
+            numerator = 1n;
+            denominator = BigInt(int);
+            break;
+        case 'year':
+            numerator = 1n;
+            denominator = BigInt(12 * int);
+            break;
+        default:
+            return '';
+    }
+
+    const monthlyMinor = divideRounded(minor * numerator, denominator);
+
+    return `≈ ${formatPrice(minorToMajor(monthlyMinor, scale), resolvedCurrency)}/month`;
+}
+
+export function formatRelativeTime(iso: string): string {
+    const then = new Date(iso).getTime();
+    const now = Date.now();
+    const diff = Math.floor((now - then) / 1000);
+
+    if (diff < 60) {
+        return t('just now');
+    }
+
+    if (diff < 3600) {
+        const count = Math.floor(diff / 60);
+
+        return t(count === 1 ? ':count minute ago' : ':count minutes ago', {
+            count,
+        });
+    }
+
+    if (diff < 86400) {
+        const count = Math.floor(diff / 3600);
+
+        return t(count === 1 ? ':count hour ago' : ':count hours ago', {
+            count,
+        });
+    }
+
+    if (diff < 2592000) {
+        const count = Math.floor(diff / 86400);
+
+        return t(count === 1 ? ':count day ago' : ':count days ago', { count });
+    }
+
+    const count = Math.floor(diff / 2592000);
+
+    return t(count === 1 ? ':count month ago' : ':count months ago', { count });
+}

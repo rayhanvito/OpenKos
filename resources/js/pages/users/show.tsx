@@ -1,0 +1,99 @@
+import { Head } from '@inertiajs/react';
+import { EntityWorkspaceLayout } from '@/components/shared/entity-workspace-layout';
+import { StatusBadge } from '@/components/shared/status-badge';
+import { WorkspaceTabs } from '@/components/shared/workspace-tabs';
+import { Badge } from '@/components/ui/badge';
+import { formatDate, formatDateTime } from '@/lib/formatters';
+import { t } from '@/lib/i18n';
+
+import type { WorkspaceUser } from '@/types';
+
+function Field({ label, value }: { label: string; value: React.ReactNode }) {
+    return (
+        <div>
+            <p className="text-xs text-muted-foreground">{label}</p>
+            <p className="mt-1 text-sm font-medium">{value ?? '—'}</p>
+        </div>
+    );
+}
+
+export default function UserWorkspace({ user }: { user: WorkspaceUser }) {
+    return (
+        <EntityWorkspaceLayout
+            title={user.name}
+            subtitle={user.email}
+            backRoute="/users"
+            backLabel={t('All users')}
+        >
+            <Head title={`${user.name} — ${t('User')}`} />
+
+            <WorkspaceTabs
+                workspace="user"
+                activeTab="overview"
+                hrefParams={{ id: user.id }}
+                tabs={[
+                    {
+                        key: 'overview',
+                        label: 'Overview',
+                        href: `/users/${user.id}`,
+                    },
+                ]}
+            />
+
+            <div className="space-y-6">
+                <div className="flex flex-wrap gap-2">
+                    <StatusBadge domain="user" value={user.status} />
+                    {user.roles.map((role) => (
+                        <Badge key={role.name} variant="secondary">
+                            {role.label}
+                        </Badge>
+                    ))}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 rounded-lg border p-4 md:grid-cols-3">
+                    <Field
+                        label={t('Last login')}
+                        value={
+                            user.last_login_at
+                                ? formatDateTime(user.last_login_at)
+                                : t('Never')
+                        }
+                    />
+                    <Field
+                        label={t('Email verified')}
+                        value={
+                            user.email_verified_at
+                                ? formatDate(user.email_verified_at)
+                                : t('No')
+                        }
+                    />
+                    <Field
+                        label={t('Invited')}
+                        value={
+                            user.invited_at ? formatDate(user.invited_at) : '—'
+                        }
+                    />
+                </div>
+
+                <div>
+                    <p className="mb-2 text-xs text-muted-foreground">
+                        {t('Assigned properties')}
+                    </p>
+                    {user.properties.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                            {t('No properties assigned.')}
+                        </p>
+                    ) : (
+                        <div className="flex flex-wrap gap-2">
+                            {user.properties.map((property) => (
+                                <Badge key={property.id} variant="outline">
+                                    {property.name}
+                                </Badge>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </EntityWorkspaceLayout>
+    );
+}

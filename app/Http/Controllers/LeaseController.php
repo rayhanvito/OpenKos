@@ -1,0 +1,582 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Actions\Leases\CreateLease;
+use App\Actions\Leases\MoveOutLease;
+use App\Actions\Leases\RenewLease;
+use App\Actions\Leases\SettleLeaseDeposit;
+use App\Actions\Leases\TerminateLease;
+use App\Actions\Reminders\ForceSendReminder;
+use App\Data\Lease\CreateLeaseData;
+use App\Data\Lease\MoveOutLeaseData;
+use App\Data\Lease\TerminateLeaseData;
+use App\Enums\InvoiceStatus;
+use App\Enums\LeaseStatus;
+use App\Enums\PaymentMethod;
+use App\Enums\PaymentStatus;
+use App\Events\Lease\LeaseCreated;
+use App\Events\Lease\LeaseStatusChanged;
+use App\Events\Unit\UnitStatusChanged;
+use App\Http\Requests\Lease\DepositSettlementRequest;
+use App\Http\Requests\Lease\MoveLeaseRequest;
+use App\Http\Requests\Lease\MoveOutRequest;
+use App\Http\Requests\Lease\RenewLeaseRequest;
+use App\Http\Requests\Lease\StoreLeaseRequest;
+use App\Http\Requests\Lease\StorePropertyLeaseRequest;
+use App\Http\Requests\Lease\UpdateLeaseRequest;
+use App\Models\Invoice;
+use App\Models\Lease;
+use App\Models\Payment;
+use App\Models\PaymentProof;
+use App\Models\Property;
+use App\Models\Unit;
+use App\Tables\Column;
+use App\Tables\Filter;
+use App\Tables\Table;
+use Brick\Math\BigDecimal;
+use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class LeaseController extends Controller
+{
+    public function show(Lease $lease): Response
+    {
+        $this->authorize('view', $lease);
+
+        $lease->load([
+            'tenants:id,name,phone',
+            'primaryTenant:id,name,phone',
+            'property.city',
+            'unit',
+            'payments.confirmedBy:id,name',
+            'payments.proofs.media',
+            'payments.invoice:id,period_start,period_end,reference,status',
+            'unitHistories.transferredBy:id,name',
+            'depositSettlement.deductions',
+        ]);
+
+        return Inertia::render('leases/show', [
+            'lease' => $lease,
+        ]);
+    }
+
+    public function payments(Request $request, Lease $lease): Response
+    {
+        $this->authorize('view', $lease);
+
+        $table = Table::make()
+            ->columns([
+                Column::make('invoice.period_start', 'Period')
+                    ->sortable(function (Builder $q, string $direction) {
+                        $q->join('invoices', 'payments.invoice_id', '=', 'invoices.id')
+                            ->orderBy('invoices.period_start', $direction)
+                            ->select('payments.*');
+                    }),
+                Column::make('payment_date', 'Paid on')->sortable(),
+                Column::make('amount', 'Amount')->sortable(),
+                Column::make('payment_method', 'Method')->sortable(),
+                Column::make('invoice.reference', 'Reference')
+                    ->sortable(function (Builder $q, string $direction) {
+                        $q->orderBy(
+                            Invoice::select('reference')
+                                ->whereColumn('id', 'payments.invoice_id'),
+                            $direction
+                        );
+                    })
+                    ->searchable(function (Builder $q, string $search) {
+                        $q->whereHas('invoice', fn (Builder $q) => $q->where(DB::raw('lower(reference)'), 'like', '%'.mb_strtolower($search).'%'));
+                    }),
+                Column::make('status', 'Status')->sortable(),
+            ])
+            ->filters([
+                Filter::select('status', 'Status', array_map(fn (PaymentStatus $s) => $s->value, PaymentStatus::cases()))
+                    ->query(fn (Builder $q, string $value) => $q->where('payments.status', $value)),
+                Filter::select('payment_method', 'Method', array_map(fn (PaymentMethod $m) => $m->value, PaymentMethod::cases()))
+                    ->query(fn (Builder $q, string $value) => $q->where('payment_method', $value)),
+            ])
+            ->defaultSort('-payment_date');
+
+        $result = $table->paginate(
+            $lease->payments()->with(['confirmedBy:id,name', 'proofs.media', 'invoice:id,reference,period_start,period_end,status']),
+            $request,
+            'payments',
+        );
+
+        return Inertia::render('leases/payments', [
+            ...$result,
+            'lease' => $lease->only('id', 'reference', 'status'),
+        ]);
+    }
+
+    public function documents(Request $request, Lease $lease): Response
+    {
+        $this->authorize('view', $lease);
+
+        $table = Table::make()
+            ->columns([
+                Column::make('original_name', 'Name')->sortable()->searchable(),
+                Column::make('mime_type', 'Type')->sortable(),
+                Column::make('created_at', 'Uploaded')->sortable(),
+            ])
+            ->filters([
+                Filter::select('payment_status', 'Payment status', array_map(fn (PaymentStatus $s) => $s->value, PaymentStatus::cases()))
+                    ->query(fn (Builder $q, string $value) => $q->whereHas('payment', fn (Builder $q) => $q->where('status', $value))),
+            ])
+            ->defaultSort('-created_at');
+
+        $result = $table->paginate(
+            PaymentProof::query()
+                ->whereHas('payment.invoice', fn ($q) => $q->where('lease_id', $lease->id))
+                ->with('media', 'payment:id,invoice_id,amount,status', 'payment.invoice:id,period_start'),
+            $request,
+            'documents',
+        );
+
+        return Inertia::render('leases/documents', [
+            ...$result,
+            'lease' => $lease->only('id', 'reference', 'status'),
+        ]);
+    }
+
+    public function index(Property $property, Unit $unit): Response
+    {
+        $this->authorize('viewAny', [Lease::class, $property]);
+
+        $property->load('city');
+        $unit->load('property.city');
+
+        $leases = $unit->leases()
+            ->with(['property', 'tenants:id,name,phone', 'primaryTenant:id,name,phone', 'payments.confirmedBy:id,name', 'payments.proofs.media', 'payments.invoice:id,period_start,period_end,reference,status', 'depositSettlement.deductions'])
+            ->withTrashed()
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->each->setRelation('unit', $unit);
+
+        $availableUnits = $property->units()
+            ->with('property.city')
+            ->select(['id', 'slug', 'name', 'property_id', 'capacity'])
+            ->withOccupiedCount()
+            ->availableForAssignment()
+            ->orderBy('name')
+            ->get();
+
+        return Inertia::render('properties/units/leases/index', [
+            'property' => ['id' => $property->id, 'name' => $property->name, 'slug' => $property->slug, 'city' => $property->city?->name],
+            'unit' => $unit->only('id', 'slug', 'name', 'floor'),
+            'leases' => $leases,
+            'availableUnits' => $availableUnits,
+        ]);
+    }
+
+    public function globalIndex(Request $request): Response
+    {
+        $allProperties = Property::query()
+            ->when(! $request->user()->isOwner(), fn (Builder $q) => $q->whereHas(
+                'users',
+                fn (Builder $q) => $q->whereKey($request->user()->id),
+            ))
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        $table = Table::make()
+            ->columns([
+                Column::make('tenant_name', 'Tenant')->searchable(function (Builder $q, string $search): void {
+                    $q->whereHas('tenants', fn (Builder $q) => $q->where(DB::raw('lower(name)'), 'like', '%'.mb_strtolower($search).'%'))
+                        ->orWhereHas('unit', fn (Builder $q) => $q->where(DB::raw('lower(name)'), 'like', '%'.mb_strtolower($search).'%'))
+                        ->orWhereHas('property', fn (Builder $q) => $q->where(DB::raw('lower(name)'), 'like', '%'.mb_strtolower($search).'%'));
+                }),
+                Column::make('unit_name', 'Unit'),
+                Column::make('property_name', 'Property'),
+                Column::make('start_date', 'Start')->sortable(),
+                Column::make('end_date', 'End')->sortable(),
+                Column::make('rent_amount', 'Rent')->sortable(),
+                Column::make('status', 'Status')->sortable(),
+                Column::make('created_at', 'Created')->sortable(),
+            ])
+            ->filters([
+                Filter::select('status', 'Status', [LeaseStatus::Active->value, LeaseStatus::Terminated->value])
+                    ->query(fn (Builder $q, string $value) => $q->where('status', $value)),
+                Filter::select('payment_status', 'Payment', [
+                    ['value' => 'paid', 'label' => 'Current'],
+                    ['value' => 'overdue', 'label' => 'Overdue'],
+                ])
+                    ->query(function (Builder $q, string $value) {
+                        return $value === 'overdue'
+                            ? $q->whereHas('invoices', fn (Builder $q) => $q->overdue())
+                            : $q->whereDoesntHave('invoices', fn (Builder $q) => $q->overdue());
+                    }),
+                Filter::select('properties', 'Property', $allProperties->map(fn (Property $p) => [
+                    'value' => (string) $p->id,
+                    'label' => $p->name,
+                ])->all())
+                    ->query(fn (Builder $q, string $value) => $q->whereIn('property_id', explode(',', $value))),
+            ])
+            ->defaultSort('status,-start_date');
+
+        $query = Lease::query()
+            ->with(['property:id,slug,name,rental_mode', 'primaryTenant:id,name,phone', 'tenants:id,name,phone', 'unit:id,slug,name,property_id', 'depositSettlement.deductions'])
+            ->addSelect(['payment_status' => Invoice::query()
+                ->selectRaw("CASE WHEN COUNT(*) > 0 THEN 'overdue' ELSE 'paid' END")
+                ->whereColumn('lease_id', 'leases.id')
+                ->whereIn('status', [InvoiceStatus::Pending->value, InvoiceStatus::Partial->value])
+                ->whereDate('due_date', '<', now()),
+            ])
+            ->withCount([
+                'payments as pending_payment_review_count' => fn (Builder $q) => $q
+                    ->where('payments.status', PaymentStatus::Pending->value),
+            ])
+            ->when(! $request->user()->isOwner(), fn (Builder $q) => $q->whereHas(
+                'property.users',
+                fn (Builder $q) => $q->whereKey($request->user()->id),
+            ));
+
+        $result = $table->paginate($query, $request, 'leases');
+
+        $leases = $result['leases'];
+        $leases->loadMissing(['property.city', 'payments.confirmedBy:id,name', 'payments.proofs.media', 'payments.invoice:id,period_start,period_end,reference,status']);
+
+        $availableUnits = Unit::query()
+            ->with('property.city')
+            ->select(['id', 'slug', 'name', 'property_id', 'capacity'])
+            ->withOccupiedCount()
+            ->when(! $request->user()->isOwner(), fn (Builder $q) => $q->whereHas(
+                'property.users',
+                fn (Builder $q) => $q->whereKey($request->user()->id),
+            ))
+            ->whereHas('property', fn (Builder $q) => $q->supportsUnitInventory())
+            ->availableForAssignment()
+            ->orderBy('name')
+            ->get();
+
+        $accessibleQuery = fn (Builder $q) => $request->user()->isOwner()
+            ? $q
+            : $q->whereHas('property.users', fn (Builder $q) => $q->whereKey($request->user()->id));
+
+        $activeLeases = Lease::query()
+            ->active()
+            ->when($accessibleQuery)
+            ->count();
+
+        $periodStart = Carbon::now()->startOfMonth()->startOfDay();
+        $periodEnd = Carbon::now()->endOfMonth()->endOfDay();
+
+        $collectedThisMonth = Payment::query()
+            ->whereNotIn('status', [PaymentStatus::Cancelled->value])
+            ->whereHas('invoice', fn (Builder $q) => $q
+                ->whereBetween('period_start', [$periodStart, $periodEnd])
+                ->whereHas('lease', fn (Builder $q) => $q->active()->when($accessibleQuery)))
+            ->get(['amount', 'currency']);
+
+        $overdueAmount = Invoice::query()
+            ->overdue()
+            ->whereHas('lease', fn (Builder $q) => $q->active()->when($accessibleQuery))
+            ->get(['total', 'amount_paid', 'currency']);
+
+        $pendingPaymentVerification = Payment::query()
+            ->where('status', PaymentStatus::Pending->value)
+            ->whereHas('invoice.lease.property', fn (Builder $q) => $request->user()->isOwner()
+                ? $q
+                : $q->whereHas('users', fn (Builder $q) => $q->whereKey($request->user()->id)))
+            ->count();
+
+        return Inertia::render('leases/index', [
+            ...$result,
+            'availableUnits' => $availableUnits,
+            'stats' => [
+                'active_leases' => $activeLeases,
+                'collected_this_month' => $this->aggregateMoney($collectedThisMonth, fn (Payment $payment): string => (string) $payment->amount),
+                'overdue_amount' => $this->aggregateMoney($overdueAmount, fn (Invoice $invoice): string => BigDecimal::of((string) $invoice->total)
+                    ->minus((string) $invoice->amount_paid)
+                    ->toString()),
+                'pending_payment_verification' => $pendingPaymentVerification,
+            ],
+        ]);
+    }
+
+    public function store(StoreLeaseRequest $request, Property $property, Unit $unit, CreateLease $action): RedirectResponse
+    {
+        $this->authorize('create', [Lease::class, $property]);
+
+        $data = new CreateLeaseData(
+            tenantIds: $request->tenant_ids,
+            startDate: $request->start_date,
+            endDate: $request->end_date,
+            rentAmount: $request->rent_amount,
+            billingInterval: $request->billing_interval,
+            billingUnit: $request->billing_unit,
+            billingStrategy: $request->billing_strategy,
+            unitRateId: $request->unit_rate_id,
+            unitTypeRateId: $request->unit_type_rate_id,
+            depositAmount: $request->deposit_amount,
+            depositPaidAt: $request->deposit_paid_at,
+            depositRefundAmount: $request->deposit_refund_amount,
+            depositRefundedAt: $request->deposit_refunded_at,
+            rentDueDay: $request->rent_due_day,
+            notes: $request->notes,
+        );
+
+        $oldUnitStatus = $unit->status;
+
+        $lease = $action->execute($unit, $data);
+
+        $lease->load('tenants:id,name,phone', 'primaryTenant:id,name,phone');
+
+        if ($lease->wasRecentlyCreated) {
+            LeaseCreated::dispatch($lease, $lease->tenants->pluck('id')->toArray(), actorId: Auth::id());
+        }
+
+        $unit->refresh();
+        if ($oldUnitStatus !== $unit->status) {
+            UnitStatusChanged::dispatch($unit, $oldUnitStatus, $unit->status, actorId: Auth::id());
+        }
+
+        $count = $lease->tenants->count();
+        $message = $count > 1
+            ? __(':count tenants assigned to unit.', ['count' => $count])
+            : __('Tenant assigned to unit.');
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => $message]);
+
+        return back();
+    }
+
+    public function storeForProperty(StorePropertyLeaseRequest $request, Property $property, CreateLease $action): RedirectResponse
+    {
+        $this->authorize('create', [Lease::class, $property]);
+
+        $lease = $action->execute($property, new CreateLeaseData(
+            tenantIds: $request->tenant_ids,
+            startDate: $request->start_date,
+            endDate: $request->end_date,
+            rentAmount: $request->rent_amount,
+            billingInterval: $request->billing_interval,
+            billingUnit: $request->billing_unit,
+            billingStrategy: $request->billing_strategy,
+            unitRateId: null,
+            depositAmount: $request->deposit_amount,
+            depositPaidAt: $request->deposit_paid_at,
+            depositRefundAmount: $request->deposit_refund_amount,
+            depositRefundedAt: $request->deposit_refunded_at,
+            rentDueDay: $request->rent_due_day,
+            notes: $request->notes,
+            propertyRateId: $request->property_rate_id,
+        ));
+
+        $lease->load('tenants:id,name,phone', 'primaryTenant:id,name,phone');
+        LeaseCreated::dispatch($lease, $lease->tenants->pluck('id')->toArray(), actorId: Auth::id());
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Whole-property lease created.')]);
+
+        return back();
+    }
+
+    public function update(UpdateLeaseRequest $request, Property $property, Unit $unit, Lease $lease): RedirectResponse
+    {
+        $this->authorize('update', $lease);
+
+        abort(403, 'Lease editing is temporarily disabled.');
+
+        $lease->update($request->validated());
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Lease updated.')]);
+
+        return back();
+    }
+
+    public function destroy(Request $request, Property $property, Unit $unit, Lease $lease, TerminateLease $action): RedirectResponse
+    {
+        $this->authorize('delete', $lease);
+
+        $result = $action->execute($property, $unit, $lease, new TerminateLeaseData($request->input('reason')));
+
+        if ($result->failed()) {
+            abort(422, $result->error);
+        }
+
+        LeaseStatusChanged::dispatch($result->lease, $result->oldLeaseStatus, LeaseStatus::Terminated, actorId: Auth::id());
+        if ($result->oldUnitStatus !== $result->newUnitStatus) {
+            UnitStatusChanged::dispatch($result->unit, $result->oldUnitStatus, $result->newUnitStatus, actorId: Auth::id());
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Lease terminated.')]);
+
+        return to_route('properties.units.index', $property);
+    }
+
+    public function moveOut(MoveOutRequest $request, Lease $lease, MoveOutLease $action): RedirectResponse
+    {
+        $validated = $request->validated();
+
+        $targetUnit = ($validated['move_to_another_unit'] ?? false)
+            ? Unit::findOrFail($validated['target_unit_id'])
+            : null;
+
+        $this->authorize('moveOut', [$lease, $targetUnit]);
+
+        $data = new MoveOutLeaseData(
+            terminationDate: now()->toDateString(),
+            endDate: $validated['move_out_date'],
+            reason: $validated['reason'] ?? 'Moved out',
+            depositReturned: $validated['deposit_returned'] ?? false,
+            depositRefundAmount: $validated['deposit_refund_amount'] ?? null,
+            notes: $validated['notes'] ?? null,
+            moveToAnotherUnit: $validated['move_to_another_unit'] ?? false,
+            targetUnitId: $validated['target_unit_id'] ?? null,
+            depositSettlement: $request->settlementData(),
+        );
+
+        $result = $action->execute($lease, $data);
+
+        if ($result->failed()) {
+            abort(422, $result->error);
+        }
+
+        if ($result->oldLeaseStatus !== $result->oldLease?->status) {
+            LeaseStatusChanged::dispatch($result->oldLease, $result->oldLeaseStatus, $result->oldLease->status, actorId: Auth::id());
+        }
+
+        if ($result->oldSourceStatus !== $result->newSourceStatus) {
+            UnitStatusChanged::dispatch($result->sourceUnit, $result->oldSourceStatus, $result->newSourceStatus, actorId: Auth::id());
+        }
+
+        if ($result->oldTargetStatus !== $result->newTargetStatus) {
+            UnitStatusChanged::dispatch($result->targetUnit, $result->oldTargetStatus, $result->newTargetStatus, actorId: Auth::id());
+        }
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => ($validated['move_to_another_unit'] ?? false)
+                ? __('Tenant moved to new unit.')
+                : __('Tenant moved out.'),
+        ]);
+
+        if ($validated['move_to_another_unit'] ?? false) {
+            return back();
+        }
+
+        return back();
+    }
+
+    public function saveDepositSettlement(
+        DepositSettlementRequest $request,
+        Lease $lease,
+        SettleLeaseDeposit $action,
+    ): RedirectResponse {
+        $this->authorize('moveOut', $lease);
+
+        $action->execute($lease, $request->toData());
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Deposit settlement saved.')]);
+
+        return back();
+    }
+
+    public function renew(RenewLeaseRequest $request, Lease $lease, RenewLease $action): RedirectResponse
+    {
+        $this->authorize('renew', $lease);
+
+        $oldLeaseStatus = $lease->status;
+
+        $result = $action->execute($lease, $request->toData());
+
+        if ($result->failed()) {
+            Inertia::flash('toast', ['type' => 'error', 'message' => $result->error]);
+
+            return back();
+        }
+
+        $lease->refresh();
+        if ($oldLeaseStatus !== $lease->status) {
+            LeaseStatusChanged::dispatch($lease, $oldLeaseStatus, $lease->status, actorId: Auth::id());
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Lease renewed. New lease created.')]);
+
+        return back();
+    }
+
+    public function sendReminder(Lease $lease, ForceSendReminder $action): RedirectResponse
+    {
+        $this->authorize('sendReminder', $lease);
+
+        $result = $action->execute($lease);
+
+        $messages = [
+            'no_contact' => __('Tenant has no phone number or email address.'),
+            'all_paid' => __('All rent periods are paid.'),
+            'already_sent' => __('Reminder already sent for this period.'),
+            'sent' => __('Reminder sent.'),
+        ];
+
+        if ($result === 'sent') {
+            Inertia::flash('toast', ['type' => 'success', 'message' => $messages['sent']]);
+        } else {
+            Inertia::flash('toast', ['type' => 'error', 'message' => $messages[$result]]);
+        }
+
+        return back();
+    }
+
+    public function move(MoveLeaseRequest $request, Property $property, Unit $unit, Lease $lease, MoveOutLease $action): RedirectResponse
+    {
+        $targetUnit = Unit::findOrFail($request->validated('target_unit_id'));
+
+        $this->authorize('move', [$lease, $targetUnit]);
+
+        $data = new MoveOutLeaseData(
+            terminationDate: now()->toDateString(),
+            endDate: now()->toDateString(),
+            reason: 'Moved to unit '.$targetUnit->name,
+            notes: ($lease->notes ? $lease->notes."\n" : '').'Moved to unit '.$targetUnit->name.' on '.now()->format('Y-m-d'),
+            moveToAnotherUnit: true,
+            targetUnitId: $targetUnit->id,
+            carryDepositRefund: true,
+        );
+
+        $result = $action->execute($lease, $data);
+
+        if ($result->failed()) {
+            abort(422, $result->error);
+        }
+
+        if ($result->oldLeaseStatus !== $result->oldLease?->status) {
+            LeaseStatusChanged::dispatch($result->oldLease, $result->oldLeaseStatus, $result->oldLease->status, actorId: Auth::id());
+        }
+
+        if ($result->oldSourceStatus !== $result->newSourceStatus) {
+            UnitStatusChanged::dispatch($result->sourceUnit, $result->oldSourceStatus, $result->newSourceStatus, actorId: Auth::id());
+        }
+
+        if ($result->oldTargetStatus !== $result->newTargetStatus) {
+            UnitStatusChanged::dispatch($result->targetUnit, $result->oldTargetStatus, $result->newTargetStatus, actorId: Auth::id());
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Tenant moved to new unit.')]);
+
+        return back();
+    }
+
+    private function aggregateMoney(Collection $rows, callable $amount): array
+    {
+        return $rows
+            ->groupBy(fn (Invoice|Payment $row): string => $row->currency)
+            ->map(function ($rows, string $currency) use ($amount): array {
+                $total = $rows->reduce(
+                    fn (BigDecimal $total, Invoice|Payment $row): BigDecimal => $total->plus($amount($row)),
+                    BigDecimal::zero(),
+                );
+
+                return ['currency' => $currency, 'amount' => $total->toString()];
+            })
+            ->values()
+            ->all();
+    }
+}

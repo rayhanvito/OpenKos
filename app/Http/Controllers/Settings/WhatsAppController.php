@@ -1,0 +1,117 @@
+<?php
+
+namespace App\Http\Controllers\Settings;
+
+use App\Actions\Settings\UpdateSettings;
+use App\Http\Controllers\Controller;
+use App\Models\Setting;
+use App\Services\WhatsAppManager;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Inertia\Response;
+use OpenKOS\Platform\Notification\NotificationDriverRegistration;
+use OpenKOS\Platform\Notification\NotificationRegistry;
+
+class WhatsAppController extends Controller
+{
+    public function __construct(
+        private WhatsAppManager $whatsapp,
+        private NotificationRegistry $registry,
+        private UpdateSettings $updateSettings,
+    ) {}
+
+    public function edit(): Response
+    {
+        $drivers = collect($this->registry->forChannel('whatsapp'))
+            ->map(function (NotificationDriverRegistration $registration) {
+                $schema = [];
+                $supportsPairing = false;
+
+                try {
+                    $class = $registration->driverClass;
+                    $instance = app()->make($class, ['config' => []]);
+                    if (method_exists($instance, 'configurationSchema')) {
+                        $schema = $instance->configurationSchema();
+                    }
+                    if (method_exists($instance, 'supportsPairing')) {
+                        $supportsPairing = $instance->supportsPairing();
+                    }
+                } catch (\Throwable) {
+                }
+
+                return [
+                    'name' => $registration->name,
+                    'label' => $registration->label,
+                    'configuration_schema' => $schema,
+                    'supports_pairing' => $supportsPairing,
+                ];
+            })
+            ->values();
+
+        $settings = Setting::some(['whatsapp_driver', 'whatsapp_config']);
+        $rawDriver = $settings['whatsapp_driver'] ?? 'openkos/whatsapp-log';
+        $settings['whatsapp_driver'] = $this->whatsapp->normalizeDriverId($rawDriver);
+
+        return Inertia::render('settings/whatsapp', [
+            'drivers' => $drivers,
+            'settings' => $settings,
+        ]);
+    }
+
+    public function update(Request $request): RedirectResponse
+    {
+        $registeredDrivers = array_map(
+            fn (NotificationDriverRegistration $r) => $r->name,
+            $this->registry->forChannel('whatsapp'),
+        );
+        $aliases = ['log'];
+        if ($this->registry->has('openkos/fonnte')) {
+            $aliases[] = 'fonnte';
+        }
+        $allowedDrivers = array_unique(array_merge($registeredDrivers, $aliases));
+
+        $validated = $request->validate([
+            'whatsapp_driver' => ['nullable', 'string', 'in:'.implode(',', $allowedDrivers)],
+            'whatsapp_config' => ['nullable', 'array'],
+        ]);
+
+        $data = $validated;
+        if (isset($validated['whatsapp_config'])) {
+            $existing = Setting::get('whatsapp_config') ?? [];
+            $data['whatsapp_config'] = array_merge($existing, $validated['whatsapp_config']);
+        }
+
+        $this->updateSettings->execute($data, $request->user());
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('WhatsApp settings updated.')]);
+
+        return back();
+    }
+
+    public function test(): RedirectResponse
+    {
+        $result = $this->whatsapp->health();
+
+        if ($result->healthy) {
+            Inertia::flash('toast', ['type' => 'success', 'message' => __('WhatsApp connection is healthy.')]);
+        } else {
+            Inertia::flash('toast', ['type' => 'error', 'message' => $result->message ?? __('WhatsApp connection failed.')]);
+        }
+
+        return back();
+    }
+
+    public function status(): JsonResponse
+    {
+        $result = $this->whatsapp->health();
+
+        return response()->json([
+            'healthy' => $result->healthy,
+            'message' => $result->message,
+            'phone' => $result->phone,
+            'lastConnected' => $result->lastConnected,
+        ]);
+    }
+}

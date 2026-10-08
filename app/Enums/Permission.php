@@ -1,0 +1,226 @@
+<?php
+
+namespace App\Enums;
+
+enum Permission: string
+{
+    case DashboardView = 'dashboard.view';
+
+    case UsersView = 'users.view';
+    case UsersCreate = 'users.create';
+    case UsersUpdate = 'users.update';
+    case UsersDelete = 'users.delete';
+    case UsersResetPassword = 'users.reset_password';
+    case UsersResendInvitation = 'users.resend_invitation';
+
+    case RolesView = 'roles.view';
+    case RolesCreate = 'roles.create';
+    case RolesUpdate = 'roles.update';
+    case RolesDelete = 'roles.delete';
+    case RolesClone = 'roles.clone';
+
+    case PropertiesView = 'properties.view';
+    case PropertiesCreate = 'properties.create';
+    case PropertiesUpdate = 'properties.update';
+    case PropertiesDelete = 'properties.delete';
+    case PropertiesImport = 'properties.import';
+    case PropertiesExport = 'properties.export';
+
+    case UnitsView = 'units.view';
+    case UnitsCreate = 'units.create';
+    case UnitsUpdate = 'units.update';
+    case UnitsDelete = 'units.delete';
+    case UnitsImport = 'units.import';
+    case UnitsExport = 'units.export';
+
+    case TenantsView = 'tenants.view';
+    case TenantsCreate = 'tenants.create';
+    case TenantsUpdate = 'tenants.update';
+    case TenantsDelete = 'tenants.delete';
+    case TenantsImport = 'tenants.import';
+    case TenantsExport = 'tenants.export';
+    case TenantsExportSensitive = 'tenants.export_sensitive';
+    case TenantsInvite = 'tenants.invite';
+
+    case UnitRatesImport = 'unit-rates.import';
+    case UnitRatesExport = 'unit-rates.export';
+
+    case LeasesView = 'leases.view';
+    case LeasesCreate = 'leases.create';
+    case LeasesUpdate = 'leases.update';
+    case LeasesDelete = 'leases.delete';
+    case LeasesMove = 'leases.move';
+    case LeasesMoveOut = 'leases.move_out';
+    case LeasesRenew = 'leases.renew';
+
+    case PaymentsCreate = 'payments.create';
+    case PaymentsVerify = 'payments.verify';
+
+    case RemindersSend = 'reminders.send';
+
+    case FinancialsView = 'financials.view';
+    case ReportsView = 'reports.view';
+
+    case ExpensesView = 'expenses.view';
+    case ExpensesCreate = 'expenses.create';
+    case ExpensesUpdate = 'expenses.update';
+    case ExpensesDelete = 'expenses.delete';
+    case ExpensesImport = 'expenses.import';
+    case ExpensesExport = 'expenses.export';
+
+    case MaintenanceTicketsView = 'maintenance-tickets.view';
+    case MaintenanceTicketsCreate = 'maintenance-tickets.create';
+    case MaintenanceTicketsUpdate = 'maintenance-tickets.update';
+    case MaintenanceTicketsDelete = 'maintenance-tickets.delete';
+    case MaintenanceTicketsAssign = 'maintenance-tickets.assign';
+
+    case InspectionsView = 'inspections.view';
+    case InspectionsCreate = 'inspections.create';
+    case InspectionsUpdate = 'inspections.update';
+    case InspectionsComplete = 'inspections.complete';
+    case InspectionTemplatesManage = 'inspection-templates.manage';
+
+    public function label(): string
+    {
+        $action = explode('.', $this->value)[1] ?? '';
+
+        return match ($action) {
+            'view' => 'View',
+            'create' => 'Create',
+            'verify' => 'Verify',
+            'update' => 'Update',
+            'delete' => 'Delete',
+            'reset_password' => 'Reset Password',
+            'resend_invitation' => 'Resend Invitation',
+            'export' => 'Export',
+            'import' => 'Import',
+            'export_sensitive' => 'Export Sensitive Data',
+            'invite' => 'Invite',
+            'move' => 'Move Unit',
+            'move_out' => 'Move Out',
+            'renew' => 'Renew Lease',
+            'send' => 'Send',
+            'clone' => 'Clone',
+            'assign' => 'Assign',
+            'complete' => 'Complete',
+            'manage' => 'Manage',
+            default => $action,
+        };
+    }
+
+    public function description(): string
+    {
+        return match ($this) {
+            self::DashboardView => 'Access the dashboard overview page.',
+
+            self::UsersView => 'View the staff user list.',
+            self::UsersCreate => 'Invite new staff users.',
+            self::UsersUpdate => 'Edit existing staff user details and roles.',
+            self::UsersDelete => 'Disable staff user access.',
+            self::UsersResetPassword => 'Send password reset links to staff users.',
+            self::UsersResendInvitation => 'Resend invitation emails to invited staff.',
+
+            self::RolesView => 'View the roles and permissions list.',
+            self::RolesCreate => 'Create new custom roles.',
+            self::RolesUpdate => 'Edit existing role settings and permissions.',
+            self::RolesDelete => 'Delete custom roles.',
+            self::RolesClone => 'Duplicate an existing role with its permissions.',
+
+            self::PropertiesView => 'View the property list and details.',
+            self::PropertiesCreate => 'Add new properties.',
+            self::PropertiesUpdate => 'Edit existing property information.',
+            self::PropertiesDelete => 'Archive properties.',
+            self::PropertiesImport => 'Import new properties from CSV files.',
+            self::PropertiesExport => 'Export property data to CSV files.',
+
+            self::UnitsView => 'View units within properties.',
+            self::UnitsCreate => 'Add new units to properties.',
+            self::UnitsUpdate => 'Edit existing unit details.',
+            self::UnitsDelete => 'Remove units from properties.',
+            self::UnitsImport => 'Import new units from CSV files.',
+            self::UnitsExport => 'Export unit data to CSV files.',
+
+            self::TenantsView => 'View the tenant list and details.',
+            self::TenantsCreate => 'Register new tenants.',
+            self::TenantsUpdate => 'Edit existing tenant information.',
+            self::TenantsDelete => 'Archive tenant records.',
+            self::TenantsImport => 'Import new tenant master data from CSV files.',
+            self::TenantsExport => 'Export ordinary tenant data to CSV files.',
+            self::TenantsExportSensitive => 'Export sensitive tenant identifiers to CSV files.',
+            self::TenantsInvite => 'Invite tenants to access the app.',
+
+            self::UnitRatesImport => 'Import new unit rates from CSV files.',
+            self::UnitRatesExport => 'Export unit rates to CSV files.',
+
+            self::LeasesView => 'View lease agreements and history.',
+            self::LeasesCreate => 'Create new leases and assign tenants to units.',
+            self::LeasesUpdate => 'Edit existing lease terms.',
+            self::LeasesDelete => 'Terminate lease agreements.',
+            self::LeasesMove => 'Move a tenant to a different unit.',
+            self::LeasesMoveOut => 'Process tenant move-out.',
+            self::LeasesRenew => 'Renew a lease agreement.',
+
+            self::PaymentsCreate => 'Record rent payments for leases.',
+            self::PaymentsVerify => 'Verify or reject payment proof attachments.',
+            self::RemindersSend => 'Send rent reminders to tenants.',
+            self::FinancialsView => 'View financial reports and payment data.',
+            self::ReportsView => 'Access generated reports.',
+
+            self::ExpensesView => 'View operating expenses.',
+            self::ExpensesCreate => 'Record operating expenses.',
+            self::ExpensesUpdate => 'Edit operating expenses.',
+            self::ExpensesDelete => 'Void operating expenses.',
+            self::ExpensesImport => 'Import operating expenses from CSV files.',
+            self::ExpensesExport => 'Export operating expenses to CSV files.',
+
+            self::MaintenanceTicketsView => 'View the maintenance ticket list.',
+            self::MaintenanceTicketsCreate => 'Report new maintenance issues.',
+            self::MaintenanceTicketsUpdate => 'Update existing maintenance ticket details.',
+            self::MaintenanceTicketsDelete => 'Delete maintenance tickets.',
+            self::MaintenanceTicketsAssign => 'Assign maintenance tickets to staff.',
+
+            self::InspectionsView => 'View inspection history and completed inspections.',
+            self::InspectionsCreate => 'Create property, unit, and lease inspections.',
+            self::InspectionsUpdate => 'Update draft inspection details and checklist items.',
+            self::InspectionsComplete => 'Complete and lock an inspection record.',
+            self::InspectionTemplatesManage => 'Create, edit, and deactivate inspection templates.',
+        };
+    }
+
+    /**
+     * @return array<string, array<int, array{value: string, label: string, description: string}>>
+     */
+    public static function grouped(): array
+    {
+        $groups = [];
+
+        foreach (self::cases() as $permission) {
+            $group = explode('.', $permission->value)[0];
+
+            $groups[$group][] = [
+                'value' => $permission->value,
+                'label' => $permission->label(),
+                'description' => $permission->description(),
+            ];
+        }
+
+        return $groups;
+    }
+
+    public static function forRole(Role $role): array
+    {
+        return match ($role) {
+            Role::Owner => self::all(),
+        };
+    }
+
+    public static function all(): array
+    {
+        return self::cases();
+    }
+
+    public static function values(): array
+    {
+        return array_column(self::cases(), 'value');
+    }
+}

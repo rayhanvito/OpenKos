@@ -1,0 +1,47 @@
+<?php
+
+namespace App\Http\Requests\Lease;
+
+use App\Data\Lease\RenewLeaseData;
+use App\Enums\DepositHandling;
+use App\Rules\MoneyAmount;
+use Carbon\CarbonImmutable;
+use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+
+class RenewLeaseRequest extends FormRequest
+{
+    /**
+     * @return array<string, ValidationRule|array<mixed>|string>
+     */
+    public function rules(): array
+    {
+        return [
+            'rent_amount' => ['required', new MoneyAmount($this->route('lease')?->currency, allowZero: false)],
+            'extension_value' => ['required', 'integer', 'min:1', 'max:120'],
+            'extension_unit' => ['required', Rule::in(['months', 'years'])],
+            'deposit_handling' => ['required', Rule::in(DepositHandling::values())],
+            'confirmed_outstanding' => ['boolean'],
+        ];
+    }
+
+    public function toData(): RenewLeaseData
+    {
+        $lease = $this->route('lease');
+
+        $extensionValue = (int) $this->extension_value;
+        $extensionMonths = $this->extension_unit === 'years'
+            ? $extensionValue * 12
+            : $extensionValue;
+
+        $endDate = CarbonImmutable::parse($lease->end_date)->addMonthsNoOverflow($extensionMonths);
+
+        return new RenewLeaseData(
+            endDate: $endDate,
+            rentAmount: (string) $this->rent_amount,
+            depositHandling: DepositHandling::from($this->deposit_handling),
+            confirmedOutstanding: (bool) $this->confirmed_outstanding,
+        );
+    }
+}

@@ -1,0 +1,166 @@
+import type { ReactNode } from 'react';
+import { DataTablePagination } from '@/components/data-table/pagination';
+import { SortHeader } from '@/components/data-table/sort-header';
+import { EmptyState } from '@/components/shared';
+import { t } from '@/lib/i18n';
+import type { PaginatedData } from '@/types';
+
+export type TableColumn<T> = {
+    key: string;
+    label: string;
+    header?: ReactNode;
+    sortable?: boolean;
+    className?: string;
+    render?: (row: T) => ReactNode;
+};
+
+type DataTableProps<T> = {
+    columns: TableColumn<T>[];
+    rows: T[];
+    currentSort?: string;
+    onSort?: (column: string) => void;
+    onRowClick?: (row: T) => void;
+    isRowInteractive?: (row: T) => boolean;
+    paginator?: PaginatedData<T>;
+    perPage?: number;
+    onPageChange?: (page: number) => void;
+    onPerPageChange?: (perPage: number) => void;
+    noun?: string;
+    rowKey?: (row: T) => string | number;
+    empty?: {
+        message: string;
+        createLabel?: string;
+        onCreate?: () => void;
+    };
+};
+
+export function DataTable<T>({
+    columns,
+    rows,
+    currentSort = '',
+    onSort,
+    onRowClick,
+    isRowInteractive,
+    paginator,
+    perPage,
+    onPageChange,
+    onPerPageChange,
+    noun,
+    rowKey,
+    empty,
+}: DataTableProps<T>) {
+    return (
+        <>
+            {rows.length === 0 && empty ? (
+                <EmptyState
+                    message={empty.message}
+                    createLabel={empty.createLabel}
+                    onCreate={empty.onCreate}
+                />
+            ) : (
+                <div className="overflow-x-auto rounded-lg border bg-card text-card-foreground shadow-xs">
+                    <table className="w-full text-sm">
+                        <thead>
+                            <tr className="border-b bg-muted/50 text-left text-muted-foreground">
+                                {columns.map((col) =>
+                                    col.header ? (
+                                        <th
+                                            key={col.key}
+                                            className={`px-4 py-3 font-medium ${col.className ?? ''}`}
+                                        >
+                                            {col.header}
+                                        </th>
+                                    ) : col.sortable && onSort ? (
+                                        <SortHeader
+                                            key={col.key}
+                                            column={col.key}
+                                            label={t(col.label)}
+                                            currentSort={currentSort}
+                                            onToggle={onSort}
+                                        />
+                                    ) : (
+                                        <th
+                                            key={col.key}
+                                            className={`px-4 py-3 font-medium ${col.className ?? ''}`}
+                                        >
+                                            {t(col.label)}
+                                        </th>
+                                    ),
+                                )}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {rows.map((row, i) => {
+                                const id =
+                                    rowKey?.(row) ??
+                                    ((row as Record<string, unknown>).id as
+                                        | string
+                                        | number
+                                        | undefined) ??
+                                    i;
+                                const rowInteractive = isRowInteractive
+                                    ? isRowInteractive(row)
+                                    : Boolean(onRowClick);
+
+                                return (
+                                    <tr
+                                        key={id}
+                                        className={`border-b last:border-0 ${rowInteractive ? 'cursor-pointer outline-none hover:bg-muted/30 focus-visible:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset' : ''}`}
+                                        tabIndex={
+                                            rowInteractive ? 0 : undefined
+                                        }
+                                        onClick={() =>
+                                            rowInteractive && onRowClick?.(row)
+                                        }
+                                        onKeyDown={(event) => {
+                                            if (
+                                                rowInteractive &&
+                                                (event.key === 'Enter' ||
+                                                    event.key === ' ')
+                                            ) {
+                                                event.preventDefault();
+                                                onRowClick?.(row);
+                                            }
+                                        }}
+                                    >
+                                        {columns.map((col) => (
+                                            <td
+                                                key={col.key}
+                                                className={`px-4 py-3 ${col.className ?? ''}`}
+                                            >
+                                                {col.render
+                                                    ? col.render(row)
+                                                    : String(
+                                                          (
+                                                              row as Record<
+                                                                  string,
+                                                                  unknown
+                                                              >
+                                                          )[col.key] ?? '',
+                                                      )}
+                                            </td>
+                                        ))}
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+
+                    {paginator &&
+                        perPage !== undefined &&
+                        onPageChange &&
+                        onPerPageChange &&
+                        noun && (
+                            <DataTablePagination
+                                data={paginator}
+                                perPage={perPage}
+                                onPageChange={onPageChange}
+                                onPerPageChange={onPerPageChange}
+                                noun={noun}
+                            />
+                        )}
+                </div>
+            )}
+        </>
+    );
+}

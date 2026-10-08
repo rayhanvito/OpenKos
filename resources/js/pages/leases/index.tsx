@@ -1,0 +1,426 @@
+import { Head, Link, router } from '@inertiajs/react';
+import {
+    ExternalLink,
+    Eye,
+    LogOut,
+    EllipsisVertical,
+    RefreshCw,
+    Building2,
+    Banknote,
+    AlertTriangle,
+    Clock3,
+} from 'lucide-react';
+import { useState } from 'react';
+import { DataTable } from '@/components/data-table';
+import type { TableColumn } from '@/components/data-table';
+import { FilterBar } from '@/components/data-table/filter-bar';
+import { SearchInput } from '@/components/data-table/search-input';
+import {
+    LeaseDetailSheet,
+    // LeaseEditSheet,
+    MoveOutSheet,
+    RenewLeaseSheet,
+} from '@/components/features';
+import { Heading } from '@/components/shared';
+import { StatusBadge } from '@/components/shared/status-badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { useTable } from '@/hooks/use-table';
+import { DUE_DAY_LABELS } from '@/lib/constants';
+import { formatDate, formatPrice } from '@/lib/formatters';
+import { t } from '@/lib/i18n';
+import { supportsUnitInventory } from '@/lib/property-rental-mode';
+import leases from '@/routes/leases';
+import units from '@/routes/properties/units';
+import type {
+    Lease,
+    LeaseIndexPageProps,
+    MoneyAggregate,
+} from '@/types';
+
+function formatMoneyGroups(groups: MoneyAggregate[]): string {
+    return (
+        groups
+            .map((group) => formatPrice(group.amount, group.currency))
+            .join(' · ') || '—'
+    );
+}
+
+export default function Index({
+    leases: data,
+    availableUnits: _availableUnits,
+    sort: currentSort = 'status,-start_date',
+    search: currentSearch = '',
+    status: currentStatus = '',
+    properties: currentProperties = '',
+    payment_status: currentPaymentStatus = '',
+    per_page: currentPerPage = 15,
+    table: tableMeta,
+    stats,
+}: LeaseIndexPageProps) {
+    const [detailLease, setDetailLease] = useState<Lease | null>(null);
+    const [detailOpen, setDetailOpen] = useState(false);
+    // const [editOpen, setEditOpen] = useState(false);
+    const [moveOutOpen, setMoveOutOpen] = useState(false);
+    const [renewOpen, setRenewOpen] = useState(false);
+
+    const table = useTable({
+        routeFn: () => leases.index(),
+        params: {
+            sort: currentSort,
+            search: currentSearch,
+            per_page: String(currentPerPage),
+            status: currentStatus,
+            properties: currentProperties,
+            payment_status: currentPaymentStatus,
+        },
+        defaults: {
+            sort: 'status,-start_date',
+            per_page: '15',
+        },
+    });
+
+    function openDetail(lease: Lease) {
+        setDetailLease(lease);
+        setDetailOpen(true);
+    }
+
+    function openMoveOutFromDetail() {
+        setDetailOpen(false);
+        setMoveOutOpen(true);
+    }
+
+    const columns: TableColumn<Lease>[] = [
+        {
+            key: 'reference',
+            label: t('Reference'),
+            className: 'font-mono text-xs',
+            render: (lease) => (
+                <div className="flex items-center gap-2">
+                    <span>{lease.reference ?? '\u2014'}</span>
+                    {lease.pending_payment_review_count ? (
+                        <span
+                            className="relative inline-flex size-2"
+                            title={`${lease.pending_payment_review_count} ${t('payment review pending')}`}
+                        >
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-surface-purple-foreground opacity-75" />
+                            <span className="relative inline-flex size-2 rounded-full bg-surface-purple-foreground" />
+                        </span>
+                    ) : null}
+                </div>
+            ),
+        },
+        {
+            key: '_tenant',
+            label: t('Tenant'),
+            className: 'font-medium',
+            render: (lease) => (
+                <div>
+                    <p className="font-medium">
+                        {(lease.tenants ?? []).length > 0
+                            ? lease.tenants.map((t) => t.name).join(', ') ||
+                              lease.tenants[0]?.name
+                            : (lease.primary_tenant?.name ?? '\u2014')}
+                    </p>
+                    {lease.target_type === 'whole_property' ? (
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                            {lease.property?.name ?? t('Entire property')}
+                        </p>
+                    ) : (
+                        lease.unit && (
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                                {supportsUnitInventory(
+                                    lease.property?.rental_mode,
+                                ) ? (
+                                    <Link
+                                        href={units.index({
+                                            property: lease.property!.slug,
+                                        })}
+                                        onClick={(e: React.MouseEvent) =>
+                                            e.stopPropagation()
+                                        }
+                                        className="text-primary hover:underline"
+                                    >
+                                        {lease.unit.name}
+                                    </Link>
+                                ) : (
+                                    lease.unit.name
+                                )}
+                                {' · '}
+                                {lease.property?.name ?? '\u2014'}
+                            </p>
+                        )
+                    )}
+                </div>
+            ),
+        },
+        {
+            key: 'start_date',
+            label: t('Start'),
+            sortable: true,
+            className: 'tabular-nums',
+            render: (lease) => formatDate(lease.start_date),
+        },
+        {
+            key: 'end_date',
+            label: t('End'),
+            sortable: true,
+            className: 'text-muted-foreground tabular-nums',
+            render: (lease) => formatDate(lease.end_date),
+        },
+        {
+            key: 'rent_amount',
+            label: t('Rent'),
+            sortable: true,
+            className: 'tabular-nums',
+            render: (lease) =>
+                `${formatPrice(lease.rent_amount, lease.currency)} ${lease.billing_label ?? ''}`,
+        },
+        {
+            key: 'rent_due_day',
+            label: t('Due'),
+            sortable: true,
+            className: 'tabular-nums',
+            render: (lease) =>
+                lease.status === 'active'
+                    ? (DUE_DAY_LABELS[lease.rent_due_day] ??
+                      `${lease.rent_due_day}th`)
+                    : '—',
+        },
+        {
+            key: 'payment_status',
+            label: t('Payment'),
+            render: (lease) =>
+                lease.status === 'active' && lease.payment_status ? (
+                    <StatusBadge domain="rent" value={lease.payment_status} />
+                ) : (
+                    '—'
+                ),
+        },
+        {
+            key: 'status',
+            label: t('Status'),
+            sortable: true,
+            render: (lease) => (
+                <StatusBadge domain="lease" value={lease.status} />
+            ),
+        },
+        {
+            key: '_actions',
+            label: '',
+            render: (lease) => (
+                <DropdownMenu>
+                    <DropdownMenuTrigger
+                        asChild
+                        onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                    >
+                        <Button variant="ghost" size="icon" className="size-8">
+                            <EllipsisVertical className="size-4" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                        align="end"
+                        onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                    >
+                        <DropdownMenuItem
+                            onClick={() => router.get(leases.show.url(lease))}
+                        >
+                            <ExternalLink className="size-4" />
+                            {t('Open Workspace')}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openDetail(lease)}>
+                            <Eye className="size-4" />
+                            {t('View')}
+                        </DropdownMenuItem>
+                        {/* <DropdownMenuItem
+                            onClick={() => {
+                                setDetailLease(lease);
+                                setDetailOpen(false);
+                                setEditOpen(true);
+                            }}
+                        >
+                            <Pencil className="size-4" />
+                                    {t('Edit')}
+                        </DropdownMenuItem> */}
+                        {lease.status === 'active' && (
+                            <>
+                                <DropdownMenuItem
+                                    onClick={() => {
+                                        setDetailLease(lease);
+                                        setDetailOpen(false);
+                                        setRenewOpen(true);
+                                    }}
+                                >
+                                    <RefreshCw className="size-4" />
+                                    {t('Renew')}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                    variant="destructive"
+                                    onClick={() => {
+                                        setDetailLease(lease);
+                                        setDetailOpen(false);
+                                        setMoveOutOpen(true);
+                                    }}
+                                >
+                                    <LogOut className="size-4" />
+                                    {t('Move Out')}
+                                </DropdownMenuItem>
+                            </>
+                        )}
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            ),
+        },
+    ];
+
+    return (
+        <>
+            <Head title={t('Leases')} />
+
+            <div className="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
+                <div className="flex items-center justify-between">
+                    <Heading
+                        title={t('Leases')}
+                        description={t('View all leases across properties')}
+                    />
+                </div>
+
+                {stats && (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:gap-4">
+                        <Card>
+                            <CardContent className="flex items-center gap-4 px-6">
+                                <Building2 className="size-10 shrink-0 text-blue-600" />
+                                <div className="min-w-0">
+                                    <p className="text-sm text-muted-foreground">
+                                        {t('Active Leases')}
+                                    </p>
+                                    <p className="truncate text-2xl font-bold tabular-nums">
+                                        {stats.active_leases}
+                                    </p>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <Card>
+                            <CardContent className="flex items-center gap-4 px-6">
+                                <Banknote className="size-10 shrink-0 text-green-600" />
+                                <div className="min-w-0">
+                                    <p className="text-sm text-muted-foreground">
+                                        {t('Collected This Month')}
+                                    </p>
+                                    <p className="truncate text-2xl font-bold tabular-nums">
+                                        {formatMoneyGroups(
+                                            stats.collected_this_month,
+                                        )}
+                                    </p>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <Card>
+                            <CardContent className="flex items-center gap-4 px-6">
+                                <AlertTriangle className="size-10 shrink-0 text-red-600" />
+                                <div className="min-w-0">
+                                    <p className="text-sm text-muted-foreground">
+                                        {t('Overdue')}
+                                    </p>
+                                    <p className="truncate text-2xl font-bold tabular-nums">
+                                        {formatMoneyGroups(
+                                            stats.overdue_amount,
+                                        )}
+                                    </p>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <Card>
+                            <CardContent className="flex items-center gap-4 px-6">
+                                <Clock3 className="size-10 shrink-0 text-violet-600" />
+                                <div className="min-w-0">
+                                    <p className="text-sm text-muted-foreground">
+                                        {t('Pending Review')}
+                                    </p>
+                                    <p className="truncate text-2xl font-bold tabular-nums">
+                                        {stats.pending_payment_verification}
+                                    </p>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
+                )}
+
+                <FilterBar
+                    filters={tableMeta.filters}
+                    activeFilters={table.activeFilters}
+                    activeFilterCount={table.activeFilterCount}
+                    onToggleOption={table.toggleFilterOption}
+                    onClearAll={table.clearAllFilters}
+                    searchInput={
+                        <SearchInput
+                            value={table.searchValue}
+                            onChange={table.onSearchChange}
+                            onClear={table.clearSearch}
+                            placeholder={t('Search tenant, unit, property...')}
+                        />
+                    }
+                />
+
+                <DataTable
+                    columns={columns}
+                    rows={data.data}
+                    currentSort={currentSort}
+                    onSort={table.toggleSort}
+                    onRowClick={openDetail}
+                    paginator={data}
+                    perPage={currentPerPage}
+                    onPageChange={table.goToPage}
+                    onPerPageChange={table.setPerPage}
+                    noun={t('leases')}
+                    empty={{
+                        message: t('No leases found.'),
+                    }}
+                />
+            </div>
+
+            <LeaseDetailSheet
+                lease={detailLease}
+                open={detailOpen}
+                onOpenChange={setDetailOpen}
+                onMoveOut={
+                    detailLease?.status === 'active'
+                        ? openMoveOutFromDetail
+                        : undefined
+                }
+            />
+
+            <MoveOutSheet
+                lease={detailLease}
+                availableUnits={_availableUnits}
+                open={moveOutOpen}
+                onOpenChange={setMoveOutOpen}
+            />
+
+            <RenewLeaseSheet
+                key={detailLease?.id ?? 'renew'}
+                lease={detailLease}
+                open={renewOpen}
+                onOpenChange={setRenewOpen}
+            />
+        </>
+    );
+}
+
+Index.layout = {
+    breadcrumbs: [
+        {
+            title: 'Leases',
+            href: leases.index(),
+        },
+    ],
+};

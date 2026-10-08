@@ -1,0 +1,78 @@
+<?php
+
+namespace Database\Factories;
+
+use App\Enums\LeaseStatus;
+use App\Models\Lease;
+use App\Models\Property;
+use App\Models\PropertyRate;
+use App\Models\Tenant;
+use App\Models\Unit;
+use Illuminate\Database\Eloquent\Factories\Factory;
+
+/**
+ * @extends Factory<Lease>
+ */
+class LeaseFactory extends Factory
+{
+    protected $model = Lease::class;
+
+    public function definition(): array
+    {
+        return [
+            'primary_tenant_id' => Tenant::factory(),
+            'unit_id' => Unit::factory(),
+            'start_date' => fake()->dateTimeBetween('-6 months', 'now'),
+            'end_date' => null,
+            'rent_amount' => null,
+            'billing_interval' => 1,
+            'billing_unit' => 'month',
+            'is_custom_price' => false,
+            'deposit_amount' => fake()->numberBetween(500_000, 1_000_000),
+            'deposit_paid_at' => now(),
+            'rent_due_day' => 1,
+            'status' => LeaseStatus::Active,
+            'termination_date' => null,
+            'termination_reason' => null,
+            'notes' => null,
+        ];
+    }
+
+    public function configure(): static
+    {
+        return $this
+            ->afterMaking(function (Lease $lease): void {
+                if ($lease->property_id === null && $lease->unit_id !== null) {
+                    $lease->property_id = Unit::query()->whereKey($lease->unit_id)->value('property_id');
+                }
+            })
+            ->afterCreating(function (Lease $lease): void {
+                $lease->tenants()->attach($lease->primary_tenant_id, ['is_primary' => true]);
+            });
+    }
+
+    public function wholeProperty(?Property $property = null): static
+    {
+        $property ??= Property::factory();
+
+        return $this->state([
+            'property_id' => $property,
+            'property_rate_id' => PropertyRate::factory()->for($property),
+            'unit_id' => null,
+        ]);
+    }
+
+    public function terminated(): static
+    {
+        return $this->state(function (array $attributes): array {
+            $endDate = fake()->dateTimeBetween('-1 month', 'now');
+
+            return [
+                'end_date' => $endDate,
+                'status' => LeaseStatus::Terminated,
+                'termination_date' => $endDate,
+                'termination_reason' => fake()->sentence(),
+            ];
+        });
+    }
+}

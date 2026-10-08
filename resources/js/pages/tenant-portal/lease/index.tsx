@@ -1,0 +1,97 @@
+import { Head, Link } from '@inertiajs/react';
+import { StatusBadge } from '@/components/shared/status-badge';
+import { formatDate, formatPrice } from '@/lib/formatters';
+import { t } from '@/lib/i18n';
+import { show } from '@/routes/portal/lease';
+import type { Lease } from '@/types';
+
+export default function LeaseIndex({
+    currentLeases,
+    previousLeases,
+}: {
+    currentLeases: Lease[];
+    previousLeases: Lease[];
+}) {
+    return (
+        <>
+            <Head title={t('Leases')} />
+
+            <div className="flex flex-1 flex-col gap-6 p-4">
+                <div>
+                    <h1 className="text-2xl font-semibold">{t('Leases')}</h1>
+                    <p className="text-sm text-muted-foreground">
+                        {t('Current and previous stays')}
+                    </p>
+                </div>
+
+                <LeaseSection
+                    title={t('Current stay')}
+                    leases={currentLeases}
+                    emptyMessage={t('You do not have an active lease.')}
+                />
+                <LeaseSection
+                    title={t('Previous stays')}
+                    leases={previousLeases}
+                    emptyMessage={t('No previous stays.')}
+                />
+            </div>
+        </>
+    );
+}
+
+function LeaseSection({
+    title,
+    leases,
+    emptyMessage,
+}: {
+    title: string;
+    leases: Lease[];
+    emptyMessage: string;
+}) {
+    return (
+        <section className="space-y-3">
+            <h2 className="font-semibold">{title}</h2>
+            {leases.length === 0 ? (
+                <p className="rounded-lg border p-4 text-sm text-muted-foreground">
+                    {emptyMessage}
+                </p>
+            ) : (
+                <div className="space-y-3">
+                    {leases.map((lease) => (
+                        <Link
+                            key={lease.id}
+                            href={show(lease)}
+                            className="block rounded-lg border p-4 transition-colors hover:bg-muted/50"
+                        >
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <p className="font-medium">
+                                        {lease.target_type === 'whole_property'
+                                            ? (lease.property?.name ??
+                                              t('Entire property'))
+                                            : `${lease.unit?.name ?? t('Unit')} · ${lease.property?.name ?? ''}`}
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">
+                                        {formatDate(lease.start_date)} –{' '}
+                                        {lease.end_date
+                                            ? formatDate(lease.end_date)
+                                            : t('Ongoing')}
+                                    </p>
+                                </div>
+                                <StatusBadge
+                                    domain="lease"
+                                    value={lease.status}
+                                />
+                            </div>
+                            <p className="mt-3 text-sm tabular-nums">
+                                {lease.rent_amount
+                                    ? `${formatPrice(lease.rent_amount, lease.currency)} ${lease.billing_label}`
+                                    : '—'}
+                            </p>
+                        </Link>
+                    ))}
+                </div>
+            )}
+        </section>
+    );
+}

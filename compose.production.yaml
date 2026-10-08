@@ -1,0 +1,165 @@
+volumes:
+    uploads:
+        name: '${OPENKOS_UPLOAD_VOLUME:-openkos_uploads}'
+
+x-openkos-environment: &openkos-environment
+    APP_NAME: '${APP_NAME:-OpenKOS}'
+    APP_ENV: '${APP_ENV:-production}'
+    APP_KEY: '${APP_KEY}'
+    APP_DEBUG: '${APP_DEBUG:-false}'
+    APP_URL: '${APP_URL}'
+    TRUSTED_PROXIES: '${TRUSTED_PROXIES:-}'
+    APP_LOCALE: '${APP_LOCALE:-en}'
+    APP_FALLBACK_LOCALE: '${APP_FALLBACK_LOCALE:-en}'
+    APP_MAINTENANCE_DRIVER: '${APP_MAINTENANCE_DRIVER:-file}'
+    APP_MAINTENANCE_STORE: '${APP_MAINTENANCE_STORE:-database}'
+    BCRYPT_ROUNDS: '${BCRYPT_ROUNDS:-12}'
+    LOG_CHANNEL: '${LOG_CHANNEL:-stack}'
+    LOG_STACK: '${LOG_STACK:-single}'
+    LOG_DEPRECATIONS_CHANNEL: '${LOG_DEPRECATIONS_CHANNEL:-null}'
+    LOG_LEVEL: '${LOG_LEVEL:-warning}'
+    DB_CONNECTION: '${DB_CONNECTION:-pgsql}'
+    DB_HOST: '${DB_HOST}'
+    DB_PORT: '${DB_PORT:-5432}'
+    DB_DATABASE: '${DB_DATABASE}'
+    DB_USERNAME: '${DB_USERNAME}'
+    DB_PASSWORD: '${DB_PASSWORD}'
+    SESSION_DRIVER: '${SESSION_DRIVER:-database}'
+    SESSION_LIFETIME: '${SESSION_LIFETIME:-120}'
+    SESSION_ENCRYPT: '${SESSION_ENCRYPT:-false}'
+    SESSION_PATH: '${SESSION_PATH:-/}'
+    SESSION_DOMAIN: '${SESSION_DOMAIN:-null}'
+    BROADCAST_CONNECTION: '${BROADCAST_CONNECTION:-log}'
+    FILESYSTEM_DISK: '${FILESYSTEM_DISK:-local}'
+    QUEUE_CONNECTION: '${QUEUE_CONNECTION:-database}'
+    CACHE_STORE: '${CACHE_STORE:-database}'
+    CACHE_PREFIX: '${CACHE_PREFIX:-}'
+    SETTINGS_CACHE_STORE: '${SETTINGS_CACHE_STORE:-}'
+    SETTINGS_CACHE_TTL: '${SETTINGS_CACHE_TTL:-3600}'
+    MEMCACHED_HOST: '${MEMCACHED_HOST:-127.0.0.1}'
+    REDIS_CLIENT: '${REDIS_CLIENT:-phpredis}'
+    REDIS_HOST: '${REDIS_HOST:-}'
+    REDIS_SCHEME: '${REDIS_SCHEME:-}'
+    REDIS_PASSWORD: '${REDIS_PASSWORD:-null}'
+    REDIS_PORT: '${REDIS_PORT:-6379}'
+    MAIL_MAILER: '${MAIL_MAILER:-smtp}'
+    MAIL_SCHEME: '${MAIL_SCHEME:-null}'
+    MAIL_HOST: '${MAIL_HOST}'
+    MAIL_PORT: '${MAIL_PORT:-587}'
+    MAIL_USERNAME: '${MAIL_USERNAME:-null}'
+    MAIL_PASSWORD: '${MAIL_PASSWORD:-null}'
+    MAIL_FROM_ADDRESS: '${MAIL_FROM_ADDRESS}'
+    MAIL_FROM_NAME: '${MAIL_FROM_NAME:-OpenKOS}'
+    AWS_ACCESS_KEY_ID: '${AWS_ACCESS_KEY_ID:-}'
+    AWS_SECRET_ACCESS_KEY: '${AWS_SECRET_ACCESS_KEY:-}'
+    AWS_DEFAULT_REGION: '${AWS_DEFAULT_REGION:-us-east-1}'
+    AWS_BUCKET: '${AWS_BUCKET:-}'
+    AWS_USE_PATH_STYLE_ENDPOINT: '${AWS_USE_PATH_STYLE_ENDPOINT:-false}'
+    OPENKOS_MARKETPLACE_URL: '${OPENKOS_MARKETPLACE_URL:-https://marketplace.openkos.id}'
+    OPENKOS_MARKETPLACE_CONNECT_TIMEOUT: '${OPENKOS_MARKETPLACE_CONNECT_TIMEOUT:-3}'
+    OPENKOS_MARKETPLACE_TIMEOUT: '${OPENKOS_MARKETPLACE_TIMEOUT:-15}'
+    OPENKOS_MARKETPLACE_MAX_RESPONSE_BYTES: '${OPENKOS_MARKETPLACE_MAX_RESPONSE_BYTES:-1048576}'
+    OPENKOS_MARKETPLACE_MAX_ARTIFACT_BYTES: '${OPENKOS_MARKETPLACE_MAX_ARTIFACT_BYTES:-67108864}'
+
+services:
+    web:
+        image: '${OPENKOS_IMAGE:-ghcr.io/rayhanvito/openkos:latest}'
+        environment:
+            <<: *openkos-environment
+            LARAVEL_OPTIMIZE: '${LARAVEL_OPTIMIZE:-true}'
+        expose:
+            - '8080'
+        extra_hosts:
+            - 'host.docker.internal:host-gateway'
+        volumes:
+            - uploads:/app/storage/app/private
+        restart: unless-stopped
+        stop_grace_period: 30s
+        healthcheck:
+            test:
+                - CMD
+                - php
+                - -r
+                - "$$response = @file_get_contents('http://127.0.0.1:8080/up'); exit($$response === false ? 1 : 0);"
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 30s
+        logging:
+            driver: json-file
+            options:
+                max-size: '${OPENKOS_LOG_MAX_SIZE:-10m}'
+                max-file: '${OPENKOS_LOG_MAX_FILES:-3}'
+        cpus: '${OPENKOS_WEB_CPUS:-1.0}'
+        mem_limit: '${OPENKOS_WEB_MEMORY:-512m}'
+
+    queue:
+        image: '${OPENKOS_IMAGE:-ghcr.io/rayhanvito/openkos:latest}'
+        environment:
+            <<: *openkos-environment
+            LARAVEL_OPTIMIZE: '${LARAVEL_OPTIMIZE:-true}'
+        extra_hosts:
+            - 'host.docker.internal:host-gateway'
+        volumes:
+            - uploads:/app/storage/app/private
+        command:
+            - php
+            - artisan
+            - queue:work
+            - --sleep=3
+            - --tries=3
+            - --timeout=90
+            - --no-interaction
+        restart: unless-stopped
+        stop_grace_period: 30s
+        healthcheck:
+            test:
+                - CMD
+                - sh
+                - -c
+                - kill -0 1
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 30s
+        logging:
+            driver: json-file
+            options:
+                max-size: '${OPENKOS_LOG_MAX_SIZE:-10m}'
+                max-file: '${OPENKOS_LOG_MAX_FILES:-3}'
+        cpus: '${OPENKOS_QUEUE_CPUS:-0.5}'
+        mem_limit: '${OPENKOS_QUEUE_MEMORY:-512m}'
+
+    scheduler:
+        image: '${OPENKOS_IMAGE:-ghcr.io/rayhanvito/openkos:latest}'
+        environment:
+            <<: *openkos-environment
+            LARAVEL_OPTIMIZE: '${LARAVEL_OPTIMIZE:-true}'
+        extra_hosts:
+            - 'host.docker.internal:host-gateway'
+        volumes:
+            - uploads:/app/storage/app/private
+        command:
+            - php
+            - artisan
+            - schedule:work
+            - --no-interaction
+        restart: unless-stopped
+        stop_grace_period: 30s
+        healthcheck:
+            test:
+                - CMD
+                - sh
+                - -c
+                - kill -0 1
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 30s
+        logging:
+            driver: json-file
+            options:
+                max-size: '${OPENKOS_LOG_MAX_SIZE:-10m}'
+                max-file: '${OPENKOS_LOG_MAX_FILES:-3}'
+        cpus: '${OPENKOS_SCHEDULER_CPUS:-0.25}'
+        mem_limit: '${OPENKOS_SCHEDULER_MEMORY:-256m}'

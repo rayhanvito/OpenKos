@@ -1,0 +1,33 @@
+<?php
+
+namespace Database\Factories;
+
+use App\Models\MaintenanceTicket;
+use App\Models\Unit;
+use Illuminate\Database\Eloquent\Factories\Factory;
+
+/**
+ * @extends Factory<MaintenanceTicket>
+ */
+class MaintenanceTicketFactory extends Factory
+{
+    protected $model = MaintenanceTicket::class;
+
+    public function definition(): array
+    {
+        return [
+            'unit_id' => Unit::factory(),
+            'property_id' => function (array $attributes) {
+                return Unit::find($attributes['unit_id'])?->property_id;
+            },
+            'title' => fake()->sentence(4),
+            'description' => fake()->paragraph(),
+            'status' => 'reported',
+            'priority' => 'medium',
+            'assigned_to' => null,
+            'cost' => null,
+            'resolved_at' => null,
+            'resolution_notes' => null,
+        ];
+    }
+}

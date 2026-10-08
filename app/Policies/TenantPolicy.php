@@ -1,0 +1,53 @@
+<?php
+
+namespace App\Policies;
+
+use App\Models\Tenant;
+use App\Models\Unit;
+use App\Models\User;
+
+class TenantPolicy
+{
+    public function view(User $user, Tenant $tenant): bool
+    {
+        return $tenant->leases()
+            ->whereHas('property.users', fn ($q) => $q->whereKey($user->id))
+            ->exists();
+    }
+
+    public function create(User $user): bool
+    {
+        return true;
+    }
+
+    public function update(User $user, Tenant $tenant): bool
+    {
+        return $tenant->leases()
+            ->whereHas('property.users', fn ($q) => $q->whereKey($user->id))
+            ->exists();
+    }
+
+    public function delete(User $user, Tenant $tenant): bool
+    {
+        return $tenant->leases()
+            ->whereHas('property.users', fn ($q) => $q->whereKey($user->id))
+            ->exists();
+    }
+
+    public function restore(User $user, Tenant $tenant): bool
+    {
+        return $this->delete($user, $tenant);
+    }
+
+    public function invite(User $user, Tenant $tenant): bool
+    {
+        return $tenant->leases()
+            ->whereHas('property.users', fn ($q) => $q->whereKey($user->id))
+            ->exists();
+    }
+
+    public function assignUnit(User $user, Unit $unit): bool
+    {
+        return $user->properties->contains($unit->property_id);
+    }
+}

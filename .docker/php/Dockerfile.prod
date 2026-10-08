@@ -93,6 +93,7 @@ COPY --from=dependencies /app/LICENSE /app/LICENSE
 COPY --from=frontend /app/public/build /app/public/build
 
 COPY .docker/entrypoint.sh /usr/local/bin/openkos-entrypoint
+RUN chmod 755 /usr/local/bin/openkos-entrypoint
 COPY .docker/php/php.ini /usr/local/etc/php/php.ini
 
 RUN mkdir -p \
